@@ -1,0 +1,11 @@
+[package]
+name = "air-scan"
+edition.workspace = true
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = { workspace = true }
+airctl = { path = "../airctl"}
+clap = { workspace = true }

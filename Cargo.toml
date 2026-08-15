@@ -1,0 +1,25 @@
+[workspace]
+members = ["air-apis","air-rock","air-scan", "airctl"]
+
+[workspace.package]
+authors = ["Sufal Bala"]
+version = "0.1.0"
+license = "MIT"
+edition = "2024"
+
+[workspace.dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
+libc = "0.2.186"
+ratatui = "0.30.2"
+
+[profile.dev]
+opt-level = 0
+debug = 1
+incremental = true
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+panic = "abort"
+strip = true

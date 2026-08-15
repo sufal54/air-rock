@@ -1,0 +1,117 @@
+Radiotap only when monitor mode
+
+Captured Packet
+
++---------------- Radiotap Header ------------------+
+| Version | Padding | Length | Present | Optional...|
++---------------------------------------------------+
+                          |
+                          | Length
+                          v
++-------------------- 802.11 Frame -----------------+
+| Frame Control | Duration | Address1 | Address2... |
++---------------------------------------------------+
+
+
+
+Radiotap Header
+
++---------+---------+---------+---------------+----------------------+
+| Version | Padding | Length  | Present Flags | Optional Fields      |
+|   1 B   |   1 B   |   2 B   |      4 B      | Variable             |
++---------+---------+---------+---------------+----------------------+
+
+
+| Field             | Size        | Description                                                                                                      |
+| ----------------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| **Version**       | **1 byte**  | Radiotap format version. Currently almost always **0**.                                                          |
+| **Padding**       | **1 byte**  | Reserved for memory alignment. Usually **0**.                                                                    |
+| **Length**        | **2 bytes** | Total length of the Radiotap header (including optional fields). Used to find where the **802.11 frame begins**. |
+| **Present Flags** | **4 bytes** | Bitmap indicating which optional fields follow. Each bit represents one optional field.                          |
+
+
+Optional Fields
+
+Only included if the corresponding bit in Present Flags is set.
+
+| Field                  | Size         | Description                                                                                         |
+| ---------------------- | ------------ | --------------------------------------------------------------------------------------------------- |
+| **TSFT**               | **8 bytes**  | Timestamp from the wireless card indicating when the first bit of the frame was received.           |
+| **Flags**              | **1 byte**   | Packet properties such as **FCS present**, **Bad FCS**, **Short Preamble**, **WEP encrypted**, etc. |
+| **Rate**               | **1 byte**   | Transmission rate in units of **500 kbps**. Example: value **12** = **6 Mbps**.                     |
+| **Channel**            | **4 bytes**  | Operating frequency (MHz) and channel flags (2.4 GHz, 5 GHz, OFDM, CCK, etc.).                      |
+| **FHSS**               | **2 bytes**  | Frequency-Hopping Spread Spectrum information (rarely used today).                                  |
+| **dBm Antenna Signal** | **1 byte**   | Received signal strength (RSSI) in **dBm**. Example: **-45 dBm** (strong), **-85 dBm** (weak).      |
+| **dBm Antenna Noise**  | **1 byte**   | Measured radio noise level in dBm.                                                                  |
+| **Lock Quality**       | **2 bytes**  | Signal lock quality (older hardware).                                                               |
+| **TX Attenuation**     | **2 bytes**  | Transmit attenuation level.                                                                         |
+| **dB TX Attenuation**  | **2 bytes**  | Transmit attenuation in dB.                                                                         |
+| **dBm TX Power**       | **1 byte**   | Actual transmit power in dBm.                                                                       |
+| **Antenna**            | **1 byte**   | Which antenna received or transmitted the frame (0, 1, 2, ...).                                     |
+| **dB Antenna Signal**  | **1 byte**   | Signal strength in dB (not dBm).                                                                    |
+| **dB Antenna Noise**   | **1 byte**   | Noise level in dB (not dBm).                                                                        |
+| **RX Flags**           | **2 bytes**  | Information about frame reception (e.g., PLCP errors).                                              |
+| **TX Flags**           | **2 bytes**  | Information about frame transmission.                                                               |
+| **MCS**                | **3 bytes**  | Modulation and Coding Scheme used by **802.11n (HT)**.                                              |
+| **AMPDU Status**       | **8 bytes**  | Information about aggregated packets (A-MPDU).                                                      |
+| **VHT**                | **12 bytes** | Very High Throughput information for **802.11ac**.                                                  |
+| **HE**                 | **Variable** | High Efficiency information for **802.11ax (Wi-Fi 6)**.                                             |
+| **HE-MU**              | **Variable** | Multi-user HE information for Wi-Fi 6.                                                              |
+| **EHT**                | **Variable** | Extremely High Throughput information for **802.11be (Wi-Fi 7)**.                                   |
+
+
+
+
+802.11 Radio Frame
+
++---------------+------+-------+-------+-------+----------+---------+-----+
+| Frame Control | Dur. | Addr1 | Addr2 | Addr3 | Seq Ctrl | Payload | FCS |
+|    2 bytes    | 2 B  | 6 B   | 6 B   | 6 B   | 2 B      | Variable| 4 B |
++---------------+------+-------+-------+-------+----------+---------+-----+
+        |
+        |
+        v
+
+Frame Control (2 bytes)
+
++---------+------+---------+------+--------+---------+-------+---------+-----------+-------+
+| Version | Type | Subtype | ToDS | FromDS | More Fr | Retry | Pwr Mgmt| Protected | Order |
++---------+------+---------+------+--------+---------+-------+---------+-----------+-------+
+
+Protocol Version = 2 bits
+Type             = 2 bits
+Subtype          = 4 bits
+To DS            = 1 bit
+From DS          = 1 bit
+More Fragments   = 1 bit
+Retry            = 1 bit
+Power Mgmt       = 1 bit
+Protected        = 1 bit
+Order            = 1 bit
+--------------------------
+Total            = 16 bits
+
+
+
+| Field                    | Size                                      |
+| ------------------------ | ----------------------------------------- |
+| Frame Control            | **2 bytes**   -> This tells the receiver what kind of frame this is and how it should be                            |
+| Duration/ID              | **2 bytes**   -> Don't transmit for the next Example 200 microseconds.                            |
+| Address 1                | **6 bytes**   -> Receiver Address (RA) MAC                           |
+| Address 2                | **6 bytes**   -> Transmitter Address (TA) MAC                            |
+| Address 3                | **6 bytes**   -> Destination MAC/Source MAC/BSSID (Access Point MAC)                            |
+| Sequence Control         | **2 bytes**   -> Helps detect: duplicate packets,packet ordering                            |
+| Address 4 *(optional)*   | **6 bytes**   -> Wireless Distribution System (WDS),Mesh networks,AP-to-AP communication                            |
+| QoS Control *(optional)* | **2 bytes**   -> Used by modern Wi-Fi (802.11e).It tells the priority of traffic. Example: Voice,Video,Best Effort,Background                            |
+| HT Control *(optional)*  | **4 bytes**   -> Used by High Throughput Wi-Fi. Examples: 802.11n,802.11ac,802.11ax                            |
+| Data (Payload)           | **0–2304 bytes** (typically much smaller) -> This is the actual information being sent. |
+| FCS (CRC-32)             | **4 bytes**                               |
+
+
+
+| To DS | From DS | Direction          | Addr1       | Addr2          | Addr3             | Addr4  |
+| ----- | ------- | ------------------ | ----------- | -------------- | ----------------- | ------ |
+| 0     | 0       | Management/IBSS    | Receiver    | Transmitter    | BSSID             | —      |
+| 1     | 0       | Client → AP        | **AP**      | **Client**     | Final destination | —      |
+| 0     | 1       | AP → Client        | **Client**  | **AP**         | Original source   | —      |
+| 1     | 1       | AP ↔ AP (WDS/Mesh) | Receiver AP | Transmitter AP | Destination       | Source |

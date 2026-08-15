@@ -1,0 +1,10 @@
+[package]
+name = "air-rock"
+edition.workspace = true
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+clap = { workspace = true }
+airctl = { path = "../airctl" }
