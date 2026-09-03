@@ -2,16 +2,15 @@ use std::{
     ffi::{CString, c_void},
     mem::{self, MaybeUninit},
     os::fd::{AsRawFd, FromRawFd, OwnedFd},
-    ptr::addr_of,
 };
 
 use air_apis::{
     AF_NETLINK, CTRL_CMD_GETFAMILY, GENL_ID_CTRL, NETLINK_GENERIC, NLM_F_REQUEST, SOCK_RAW,
-    air_bind, air_connect, air_if_name2idx, genlmsghdr, nlmsghdr, sockaddr, sockaddr_nl, socklen_t,
+    air_bind, air_connect, air_if_name2idx, nlmsghdr, sockaddr, sockaddr_nl, socklen_t,
 };
 use libc::{
-    CTRL_ATTR_FAMILY_ID, CTRL_ATTR_FAMILY_NAME, NLM_F_ACK, NLMSG_DONE, NLMSG_ERROR, id_t, iovec,
-    msghdr, nlattr, nlmsgerr, recvmsg, sendmsg,
+    CTRL_ATTR_FAMILY_ID, CTRL_ATTR_FAMILY_NAME, NLM_F_ACK, NLMSG_DONE, NLMSG_ERROR, iovec, msghdr,
+    nlattr, nlmsgerr, recvmsg, sendmsg,
 };
 
 use crate::helper::{gen_genl_hdr, gen_nl_hdr, gen_nla_hdr};
@@ -359,14 +358,6 @@ impl Service {
 
         if len < std::mem::size_of::<libc::nlmsghdr>() as isize {
             return false;
-        }
-
-        for (i, b) in buf[..len as usize].iter().enumerate() {
-            print!("{:02x} ", b);
-
-            if (i + 1) % 16 == 0 {
-                println!();
-            }
         }
 
         let nl_hdr = unsafe { &*(buf.as_ptr() as *const libc::nlmsghdr) };
@@ -997,6 +988,167 @@ impl Service {
         }
 
         Some(interface_details)
+    }
+
+    pub fn scan(&mut self) -> bool {
+        let family_id = match self.nl80211_family_id {
+            Some(id) => id,
+            None => {
+                eprintln!("nl80211 family ID is not initialized");
+                return false;
+            }
+        };
+
+        self.seq = self.seq.wrapping_add(1);
+
+        // ------------------------------------------------------------
+        // NL80211_CMD_TRIGGER_SCAN = 33
+        //
+        // Message:
+        //
+        // nlmsghdr  = 16 bytes
+        // genlmsghdr = 4 bytes
+        // IFINDEX nla = 8 bytes
+        //
+        // total = 28 bytes
+        // ------------------------------------------------------------
+
+        let nl_hdr = gen_nl_hdr(
+            28,
+            family_id,
+            (NLM_F_REQUEST | NLM_F_ACK) as u16,
+            self.seq,
+            0,
+        );
+
+        // NL80211_CMD_TRIGGER_SCAN = 33
+        let genl_hdr = gen_genl_hdr(33);
+
+        // NL80211_ATTR_IFINDEX = 3
+        let nla_ifindex = gen_nla_hdr(8, 3);
+
+        let ifindex = self.if_index.to_ne_bytes();
+
+        let mut iov = [
+            iovec {
+                iov_base: nl_hdr.as_ptr() as *mut c_void,
+                iov_len: nl_hdr.len(),
+            },
+            iovec {
+                iov_base: genl_hdr.as_ptr() as *mut c_void,
+                iov_len: genl_hdr.len(),
+            },
+            iovec {
+                iov_base: nla_ifindex.as_ptr() as *mut c_void,
+                iov_len: nla_ifindex.len(),
+            },
+            iovec {
+                iov_base: ifindex.as_ptr() as *mut c_void,
+                iov_len: ifindex.len(),
+            },
+        ];
+
+        let mut msg: msghdr = unsafe { MaybeUninit::zeroed().assume_init() };
+
+        msg.msg_iov = iov.as_mut_ptr();
+        msg.msg_iovlen = iov.len();
+
+        let sent = unsafe { sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
+
+        if sent < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("NL80211_CMD_TRIGGER_SCAN sendmsg failed: {err}");
+            return false;
+        }
+
+        // ------------------------------------------------------------
+        // Receive ACK
+        // ------------------------------------------------------------
+
+        let mut buf = [0u8; 8192];
+
+        let mut recv_iov = iovec {
+            iov_base: buf.as_mut_ptr() as *mut c_void,
+            iov_len: buf.len(),
+        };
+
+        let mut recv_msg: msghdr = unsafe { MaybeUninit::zeroed().assume_init() };
+
+        recv_msg.msg_iov = &mut recv_iov;
+        recv_msg.msg_iovlen = 1;
+
+        let received = unsafe { recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0) };
+
+        if received < 0 {
+            let err = std::io::Error::last_os_error();
+            eprintln!("recvmsg failed: {err}");
+            return false;
+        }
+
+        if received < 16 {
+            eprintln!("short netlink response: {received}");
+            return false;
+        }
+
+        let received = received as usize;
+
+        // ------------------------------------------------------------
+        // struct nlmsghdr
+        //
+        // offset  size
+        // 0       4    nlmsg_len
+        // 4       2    nlmsg_type
+        // 6       2    nlmsg_flags
+        // 8       4    nlmsg_seq
+        // 12      4    nlmsg_pid
+        // ------------------------------------------------------------
+
+        let nlmsg_len = u32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+
+        let nlmsg_type = u16::from_ne_bytes([buf[4], buf[5]]);
+
+        let nlmsg_flags = u16::from_ne_bytes([buf[6], buf[7]]);
+
+        let nlmsg_seq = u32::from_ne_bytes([buf[8], buf[9], buf[10], buf[11]]);
+
+        let nlmsg_pid = u32::from_ne_bytes([buf[12], buf[13], buf[14], buf[15]]);
+
+        // ------------------------------------------------------------
+        // NLMSG_ERROR
+        //
+        // For an ACK:
+        //
+        // nlmsg_type = NLMSG_ERROR
+        // error      = 0
+        // ------------------------------------------------------------
+
+        if nlmsg_type == NLMSG_ERROR as u16 {
+            if received < 20 {
+                eprintln!("invalid NLMSG_ERROR");
+                return false;
+            }
+
+            let error = i32::from_ne_bytes([buf[16], buf[17], buf[18], buf[19]]);
+
+            if error == 0 {
+                println!("NL80211_CMD_TRIGGER_SCAN accepted");
+                return true;
+            }
+
+            let errno = -error;
+
+            eprintln!(
+                "NL80211_CMD_TRIGGER_SCAN failed: {} ({})",
+                errno,
+                std::io::Error::from_raw_os_error(errno)
+            );
+
+            return false;
+        }
+
+        eprintln!("unexpected netlink message type: {}", nlmsg_type);
+
+        false
     }
 
     pub fn start_monitor(&mut self) -> bool {

@@ -1,7 +1,4 @@
-use crate::{
-    helper::CHANNEL_FREQ_MAP,
-    nl_gen::service::{InterfaceInfo, Service},
-};
+use crate::nl_gen::service::{InterfaceInfo, Service};
 
 pub struct Ctrl {
     service: Service,
@@ -31,5 +28,8 @@ impl Ctrl {
     }
     pub fn stop_monitor(&mut self) -> bool {
         self.service.stop_monitor()
+    }
+    pub fn scan(&mut self) -> bool {
+        self.service.scan()
     }
 }

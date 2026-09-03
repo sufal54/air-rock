@@ -46,7 +46,6 @@ fn main() {
                 Some(freq) => freq,
                 None => panic!(),
             };
-            println!("{}", max_freq);
 
             let end = CHANNEL_FREQ_MAP.partition_point(|&(_, freq)| freq <= max_freq);
 
