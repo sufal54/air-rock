@@ -1,0 +1,10 @@
+[package]
+name = "air-throw"
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+airctl = { path = "../airctl"}
+clap = { workspace = true }

@@ -9,3 +9,4 @@ license.workspace = true
 libc = { workspace = true }
 airctl = { path = "../airctl"}
 clap = { workspace = true }
+terminal_manager = { path = "../terminal_manager" }

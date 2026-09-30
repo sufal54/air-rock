@@ -1,5 +1,5 @@
 [workspace]
-members = ["air-apis","air-rock","air-scan", "airctl"]
+members = ["air-apis","air-rock","air-scan", "air-throw", "airctl", "terminal_manager"]
 
 [workspace.package]
 authors = ["Sufal Bala"]
@@ -10,7 +10,7 @@ edition = "2024"
 [workspace.dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
 libc = "0.2.186"
-ratatui = "0.30.2"
+crossterm = "0.29"
 
 [profile.dev]
 opt-level = 0

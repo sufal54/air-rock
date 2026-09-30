@@ -1,0 +1,10 @@
+[package]
+name = "terminal_manager"
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+crossterm = { workspace = true }
+airctl = { path = "../airctl"}

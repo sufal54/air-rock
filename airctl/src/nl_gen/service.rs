@@ -205,7 +205,7 @@ impl Service {
                     response[offset + 19],
                 ]);
 
-                println!("CTRL_CMD_GETFAMILY error = {}", error);
+                eprintln!("CTRL_CMD_GETFAMILY error = {}", error);
 
                 return None;
             }
@@ -331,7 +331,7 @@ impl Service {
         if ret < 0 {
             if ret < 0 {
                 let err = std::io::Error::last_os_error();
-                println!("sendmsg failed: {:?}", err);
+                eprintln!("sendmsg failed: {:?}", err);
                 return false;
             }
             return false;
@@ -373,7 +373,7 @@ impl Service {
                     return true;
                 } else {
                     let errno = -err.error;
-                    println!(
+                    eprintln!(
                         "SET_WIPHY failed: {} ({})",
                         errno,
                         std::io::Error::from_raw_os_error(errno)
@@ -387,7 +387,7 @@ impl Service {
             }
 
             _ => {
-                println!("Unexpected message type {}", nl_hdr.nlmsg_type);
+                eprintln!("Unexpected message type {}", nl_hdr.nlmsg_type);
                 return false;
             }
         }
@@ -507,10 +507,8 @@ impl Service {
         let if_idx_data = if_idx.to_ne_bytes();
 
         let family_id = match self.nl80211_family_id {
-            Some(id) => {
-                println!("family id {}", id);
-                id
-            }
+            Some(id) => id,
+
             None => return None,
         };
 
@@ -1131,7 +1129,7 @@ impl Service {
             let error = i32::from_ne_bytes([buf[16], buf[17], buf[18], buf[19]]);
 
             if error == 0 {
-                println!("NL80211_CMD_TRIGGER_SCAN accepted");
+                eprintln!("NL80211_CMD_TRIGGER_SCAN accepted");
                 return true;
             }
 
