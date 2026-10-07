@@ -4,8 +4,9 @@ use std::{
     os::fd::{AsRawFd, FromRawFd, OwnedFd},
 };
 
-use air_apis::{AF_NETLINK, SOCK_RAW, air_connect, air_if_name2idx, nlmsghdr, sockaddr_nl};
-use libc::NETLINK_ROUTE;
+use air_apis::{
+    AF_NETLINK, NETLINK_ROUTE, SOCK_RAW, air_connect, air_if_name2idx, nlmsghdr, sockaddr_nl,
+};
 
 pub struct Service {
     sock_fd: OwnedFd,

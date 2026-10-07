@@ -123,13 +123,17 @@ fn main() {
                                     let mut connected_client =
                                         worker_connected_client.write().unwrap();
 
-                                    let client = if packet_info.to_ds {
-                                        packet_info.transmitter.clone()
-                                    } else if packet_info.from_ds {
-                                        packet_info.receiver.clone()
-                                    } else {
-                                        packet_info.transmitter.clone()
-                                    };
+                                    let worker_aps = Arc::clone(&aps);
+
+                                    let aps = worker_aps.read().unwrap();
+
+                                    if !aps.contains_key(&packet_info.transmitter)
+                                        || packet_info.transmitter == packet_info.receiver
+                                    {
+                                        continue;
+                                    }
+
+                                    let client = packet_info.receiver.clone();
 
                                     if is_multicast_mac(&client) {
                                         continue;

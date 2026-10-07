@@ -1,5 +1,5 @@
-mod strct;
-mod type_;
+mod module;
+mod protocols;
 
-pub use strct::*;
-pub use type_::*;
+pub use module::*;
+pub use protocols::*;

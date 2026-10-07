@@ -5,12 +5,10 @@ use std::{
 };
 
 use air_apis::{
-    AF_NETLINK, CTRL_CMD_GETFAMILY, GENL_ID_CTRL, NETLINK_GENERIC, NLM_F_REQUEST, SOCK_RAW,
-    air_bind, air_connect, air_if_name2idx, nlmsghdr, sockaddr, sockaddr_nl, socklen_t,
-};
-use libc::{
-    CTRL_ATTR_FAMILY_ID, CTRL_ATTR_FAMILY_NAME, NLM_F_ACK, NLMSG_DONE, NLMSG_ERROR, iovec, msghdr,
-    nlattr, nlmsgerr, recvmsg, sendmsg,
+    AF_NETLINK, CTRL_ATTR_FAMILY_ID, CTRL_ATTR_FAMILY_NAME, CTRL_CMD_GETFAMILY, GENL_ID_CTRL,
+    NETLINK_GENERIC, NLM_F_ACK, NLM_F_REQUEST, NLMSG_DONE, NLMSG_ERROR, SOCK_RAW, air_bind,
+    air_connect, air_if_name2idx, air_recvmsg, air_sendmsg, iovec, msghdr, nlattr, nlmsgerr,
+    nlmsghdr, sockaddr, sockaddr_nl, socklen_t,
 };
 
 use crate::helper::{gen_genl_hdr, gen_nl_hdr, gen_nla_hdr};
@@ -152,7 +150,7 @@ impl Service {
         msg.msg_iov = iov.as_mut_ptr();
         msg.msg_iovlen = iov.len();
 
-        let sent = unsafe { sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
+        let sent = air_sendmsg(self.sock_fd.as_raw_fd(), &msg, 0);
 
         if sent < 0 {
             return None;
@@ -170,7 +168,7 @@ impl Service {
         recv_msg.msg_iov = &mut recv_iov;
         recv_msg.msg_iovlen = 1;
 
-        let received = unsafe { recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0) };
+        let received = air_recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0);
 
         if received <= 0 {
             return None;
@@ -326,7 +324,7 @@ impl Service {
         msg.msg_iov = iov.as_mut_ptr();
         msg.msg_iovlen = iov.len();
 
-        let ret = unsafe { sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
+        let ret = air_sendmsg(self.sock_fd.as_raw_fd(), &msg, 0);
 
         if ret < 0 {
             if ret < 0 {
@@ -351,7 +349,7 @@ impl Service {
         msg.msg_iov = &mut iov;
         msg.msg_iovlen = 1;
 
-        let len = unsafe { recvmsg(self.sock_fd.as_raw_fd(), &mut msg, 0) };
+        let len = air_recvmsg(self.sock_fd.as_raw_fd(), &mut msg, 0);
         if len < 0 {
             return false;
         }
@@ -547,7 +545,7 @@ impl Service {
         msg.msg_iov = iov.as_mut_ptr();
         msg.msg_iovlen = iov.len();
 
-        let sent = unsafe { sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
+        let sent = air_sendmsg(self.sock_fd.as_raw_fd(), &msg, 0);
 
         if sent < 0 {
             return None;
@@ -565,7 +563,7 @@ impl Service {
         recv_msg.msg_iov = &mut recv_iov;
         recv_msg.msg_iovlen = 1;
 
-        let received = unsafe { recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0) };
+        let received = air_recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0);
 
         if received <= 0 {
             return None;
@@ -888,7 +886,7 @@ impl Service {
         msg.msg_iov = iov.as_mut_ptr();
         msg.msg_iovlen = iov.len();
 
-        let sent = unsafe { sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
+        let sent = air_sendmsg(self.sock_fd.as_raw_fd(), &msg, 0);
 
         if sent < 0 {
             return None;
@@ -905,7 +903,7 @@ impl Service {
         recv_msg.msg_iov = &mut recv_iov;
         recv_msg.msg_iovlen = 1;
 
-        let received = unsafe { recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0) };
+        let received = air_recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0);
 
         if received < 0 {
             return None;
@@ -1051,7 +1049,7 @@ impl Service {
         msg.msg_iov = iov.as_mut_ptr();
         msg.msg_iovlen = iov.len();
 
-        let sent = unsafe { sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
+        let sent = air_sendmsg(self.sock_fd.as_raw_fd(), &msg, 0);
 
         if sent < 0 {
             let err = std::io::Error::last_os_error();
@@ -1075,7 +1073,7 @@ impl Service {
         recv_msg.msg_iov = &mut recv_iov;
         recv_msg.msg_iovlen = 1;
 
-        let received = unsafe { recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0) };
+        let received = air_recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0);
 
         if received < 0 {
             let err = std::io::Error::last_os_error();
@@ -1101,15 +1099,15 @@ impl Service {
         // 12      4    nlmsg_pid
         // ------------------------------------------------------------
 
-        let nlmsg_len = u32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+        // let nlmsg_len = u32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
 
         let nlmsg_type = u16::from_ne_bytes([buf[4], buf[5]]);
 
-        let nlmsg_flags = u16::from_ne_bytes([buf[6], buf[7]]);
+        // let nlmsg_flags = u16::from_ne_bytes([buf[6], buf[7]]);
 
-        let nlmsg_seq = u32::from_ne_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        // let nlmsg_seq = u32::from_ne_bytes([buf[8], buf[9], buf[10], buf[11]]);
 
-        let nlmsg_pid = u32::from_ne_bytes([buf[12], buf[13], buf[14], buf[15]]);
+        // let nlmsg_pid = u32::from_ne_bytes([buf[12], buf[13], buf[14], buf[15]]);
 
         // ------------------------------------------------------------
         // NLMSG_ERROR
@@ -1206,7 +1204,7 @@ impl Service {
         msg.msg_iov = iov.as_mut_ptr();
         msg.msg_iovlen = iov.len();
 
-        let sent = unsafe { sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
+        let sent = air_sendmsg(self.sock_fd.as_raw_fd(), &msg, 0);
 
         if sent < 0 {
             return false;
@@ -1223,7 +1221,7 @@ impl Service {
         recv_msg.msg_iov = recv_iov.as_mut_ptr();
         recv_msg.msg_iovlen = 1;
 
-        let received = unsafe { recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0) };
+        let received = air_recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0);
 
         if received < 0 {
             return false;
@@ -1299,7 +1297,7 @@ impl Service {
         msg.msg_iov = iov.as_mut_ptr();
         msg.msg_iovlen = iov.len();
 
-        let sent = unsafe { sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
+        let sent = air_sendmsg(self.sock_fd.as_raw_fd(), &msg, 0);
 
         if sent < 0 {
             return false;
@@ -1316,7 +1314,7 @@ impl Service {
         recv_msg.msg_iov = recv_iov.as_mut_ptr();
         recv_msg.msg_iovlen = 1;
 
-        let received = unsafe { recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0) };
+        let received = air_recvmsg(self.sock_fd.as_raw_fd(), &mut recv_msg, 0);
 
         if received < 0 {
             return false;

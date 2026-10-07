@@ -14,6 +14,10 @@ unsafe extern "C" {
     ) -> c_int;
     unsafe fn recv(socket: c_int, buf: *mut c_void, len: size_t, flags: c_int) -> ssize_t;
     unsafe fn close(fd: c_int) -> c_int;
+
+    unsafe fn recvmsg(fd: c_int, msg: *mut crate::msghdr, flags: c_int) -> ssize_t;
+
+    unsafe fn sendmsg(fd: c_int, msg: *const crate::msghdr, flags: c_int) -> ssize_t;
 }
 
 pub fn air_connect(domain: c_int, type_: c_int, protocol: c_int) -> c_int {
@@ -34,4 +38,12 @@ pub fn air_recv(socket: c_int, buf: *mut c_void, len: size_t, flags: c_int) -> s
 
 pub fn air_close(fd: c_int) -> c_int {
     unsafe { close(fd) }
+}
+
+pub fn air_recvmsg(fd: c_int, msg: *mut crate::msghdr, flags: c_int) -> ssize_t {
+    unsafe { recvmsg(fd, msg, flags) }
+}
+
+pub fn air_sendmsg(fd: c_int, msg: *const crate::msghdr, flags: c_int) -> ssize_t {
+    unsafe { sendmsg(fd, msg, flags) }
 }

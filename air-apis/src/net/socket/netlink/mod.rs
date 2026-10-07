@@ -1,7 +1,7 @@
 mod generic;
 mod nl_hdr_type;
-mod strct;
+mod module;
 
 pub use generic::*;
 pub use nl_hdr_type::*;
-pub use strct::*;
+pub use module::*;

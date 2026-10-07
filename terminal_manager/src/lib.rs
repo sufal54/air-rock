@@ -209,28 +209,28 @@ impl TerminalManager {
 
             // LIVE CLIENTS
 
-            {
-                let clients = terminal_live.read().unwrap();
+            // {
+            //     let clients = terminal_live.read().unwrap();
 
-                for (client_mac, client) in clients.iter() {
-                    let (_, height) = terminal::size()?;
+            //     for (client_mac, client) in clients.iter() {
+            //         let (_, height) = terminal::size()?;
 
-                    if y >= height {
-                        break;
-                    }
+            //         if y >= height {
+            //             break;
+            //         }
 
-                    queue!(
-                        self.stdout,
-                        cursor::MoveTo(0, y),
-                        Print(format!(
-                            " {:<18} {:<18} {:<12} {:<10}",
-                            client_mac, client.1.bssid, "PROBE", "LIVE",
-                        )),
-                    )?;
+            //         queue!(
+            //             self.stdout,
+            //             cursor::MoveTo(0, y),
+            //             Print(format!(
+            //                 " {:<18} {:<18} {:<12} {:<10}",
+            //                 client_mac, client.1.bssid, "PROBE", "LIVE",
+            //             )),
+            //         )?;
 
-                    y += 1;
-                }
-            }
+            //         y += 1;
+            //     }
+            // }
 
             // STATUS
 

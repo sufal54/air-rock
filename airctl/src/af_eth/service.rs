@@ -6,10 +6,9 @@ use std::{
 };
 
 use air_apis::{
-    AF_PACKET, ETH_P_ALL, SOCK_RAW, air_bind, air_connect, air_if_name2idx, air_recv, sockaddr,
-    sockaddr_ll,
+    AF_PACKET, ETH_P_ALL, POLLIN, SOCK_RAW, air_bind, air_connect, air_if_name2idx, air_poll,
+    air_recv, pollfd, sockaddr, sockaddr_ll,
 };
-use libc::{POLLIN, poll, pollfd};
 
 use crate::af_eth::{ControlFrame, FrameName, PacketInfo, RadioInfo, RadioTab, Security};
 
@@ -89,7 +88,7 @@ impl Service {
 
         self.poll_fd.revents = 0;
 
-        let ready = unsafe { poll(&mut self.poll_fd, 1, timeout_ms) };
+        let ready = air_poll(&mut self.poll_fd, 1, timeout_ms);
 
         if ready > 0 && (self.poll_fd.revents & POLLIN) != 0 {
             return self.accept();
@@ -107,7 +106,7 @@ impl Service {
             //     revents: 0,
             // };
 
-            let ready = unsafe { poll(&mut self.poll_fd, 1, 0) };
+            let ready = air_poll(&mut self.poll_fd, 1, 0);
 
             if ready <= 0 || (self.poll_fd.revents & POLLIN) == 0 {
                 break;
@@ -587,7 +586,7 @@ impl Service {
             return;
         }
 
-        let duration = u16::from_le_bytes([wifi[2], wifi[3]]);
+        // let duration = u16::from_le_bytes([wifi[2], wifi[3]]);
 
         let mut receiver = [0u8; 6];
         receiver.copy_from_slice(&wifi[4..10]);
@@ -778,8 +777,8 @@ impl Service {
         let frame_type = ((frame_control >> 2) & 0x3) as u8;
         let subtype = ((frame_control >> 4) & 0xF) as u8;
 
-        let to_ds = (frame_control & (1 << 8)) != 0;
-        let from_ds = (frame_control & (1 << 9)) != 0;
+        // let to_ds = (frame_control & (1 << 8)) != 0;
+        // let from_ds = (frame_control & (1 << 9)) != 0;
         let order = (frame_control & (1 << 15)) != 0;
 
         // Must be a Data frame (Type 2)
