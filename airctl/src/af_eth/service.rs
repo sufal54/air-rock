@@ -1016,8 +1016,65 @@ impl Service {
 
         if result < 0 {
             eprintln!("sendmsg failed: {}", std::io::Error::last_os_error());
-        } else {
-            println!("sendmsg accepted {} bytes", result);
+        }
+    }
+
+    pub fn beacons(&self, bssid: [u8; 6], ssid: &str) {
+        let mut radio_tab = RadioTab::default();
+        radio_tab.len = 8;
+
+        let broadcast_addr: [u8; 6] = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+
+        let mut management_frame = ControlFrame::default();
+        management_frame.frame_control = 0x8000;
+        management_frame.duration_id = 0;
+        management_frame.addr1 = broadcast_addr; // Broadcast
+        management_frame.addr2 = bssid; // Source (AP)
+        management_frame.addr3 = bssid; // BSSID
+
+        let timestamp: u64 = 0;
+        let beacon_interval: u16 = 0x0064;
+        let capabilities: u16 = 0x0431;
+
+        let mut ssid_element = vec![0, ssid.len() as u8];
+        ssid_element.extend_from_slice(ssid.as_bytes());
+
+        let mut packet = Vec::with_capacity(64);
+
+        packet.extend_from_slice(&radio_tab.to_bytes());
+        packet.extend_from_slice(&management_frame.to_bytes());
+
+        // Append beacon body fields
+        packet.extend_from_slice(&timestamp.to_le_bytes());
+        packet.extend_from_slice(&beacon_interval.to_le_bytes());
+        packet.extend_from_slice(&capabilities.to_le_bytes());
+        packet.extend_from_slice(&ssid_element);
+
+        let mut addr = sockaddr_ll {
+            sll_family: AF_PACKET as u16,
+            sll_protocol: (ETH_P_ALL as u16).to_be(),
+            sll_ifindex: self.if_index as i32,
+            sll_hatype: 0,
+            sll_pkttype: 0,
+            sll_halen: 6,
+            sll_addr: [0; 8],
+        };
+        // Destination for raw socket layer can be broadcast or target
+        addr.sll_addr[..6].copy_from_slice(&broadcast_addr);
+
+        let iov = [IoSlice::new(&packet)];
+
+        let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+
+        msg.msg_name = &mut addr as *mut _ as *mut libc::c_void;
+        msg.msg_namelen = std::mem::size_of::<sockaddr_ll>() as libc::socklen_t;
+        msg.msg_iov = iov.as_ptr() as *mut libc::iovec;
+        msg.msg_iovlen = iov.len();
+
+        let result = unsafe { libc::sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
+
+        if result < 0 {
+            eprintln!("sendmsg failed: {}", std::io::Error::last_os_error());
         }
     }
 

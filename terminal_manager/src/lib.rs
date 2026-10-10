@@ -74,7 +74,7 @@ impl TerminalManager {
         terminal_running: Arc<AtomicBool>,
         terminal_aps: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>>,
         terminal_connected: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>>,
-        terminal_live: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>>,
+        // terminal_live: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>>,
     ) -> io::Result<()> {
         // Client table scroll position.
         let mut client_scroll: usize = 0;
@@ -199,8 +199,6 @@ impl TerminalManager {
 
             y += 2;
 
-            let client_header_y = y;
-
             queue!(
                 self.stdout,
                 cursor::MoveTo(0, y),
@@ -228,12 +226,11 @@ impl TerminalManager {
                     radio: RadioInfo,
                     packet: PacketInfo,
                 },
-
-                Live {
-                    mac: String,
-                    radio: RadioInfo,
-                    packet: PacketInfo,
-                },
+                // Live {
+                //     mac: String,
+                //     radio: RadioInfo,
+                //     packet: PacketInfo,
+                // },
             }
 
             let mut client_rows: Vec<ClientRow> = Vec::new();
@@ -314,22 +311,20 @@ impl TerminalManager {
                                 security,
                             )),
                         )?;
-                    }
-
-                    ClientRow::Live { mac, radio, .. } => {
-                        queue!(
-                            self.stdout,
-                            cursor::MoveTo(0, y),
-                            Print(format!(
-                                " {:<18}  {:<18} {:>5} {:>4} {:<9}",
-                                mac,
-                                "Not Connected",
-                                radio.signal_power.unwrap_or(-100),
-                                "PROBE",
-                                "LIVE",
-                            )),
-                        )?;
-                    }
+                    } // ClientRow::Live { mac, radio, .. } => {
+                      //     queue!(
+                      //         self.stdout,
+                      //         cursor::MoveTo(0, y),
+                      //         Print(format!(
+                      //             " {:<18}  {:<18} {:>5} {:>4} {:<9}",
+                      //             mac,
+                      //             "Not Connected",
+                      //             radio.signal_power.unwrap_or(-100),
+                      //             "PROBE",
+                      //             "LIVE",
+                      //         )),
+                      //     )?;
+                      // }
                 }
 
                 y += 1;

@@ -27,4 +27,8 @@ impl Ctrl {
     pub fn deauth(&self, target: [u8; 6], bssid: [u8; 6]) {
         self.service.deauth(target, bssid);
     }
+
+    pub fn beacons(&self, bssid: [u8; 6], ssid: &str) {
+        self.service.beacons(bssid, ssid);
+    }
 }

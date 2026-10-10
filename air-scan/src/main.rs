@@ -29,9 +29,13 @@ struct Cli {
     #[arg(short, long)]
     interface: String,
 
-    /// BSSID
+    /// BSSID AP
     #[arg(short, long)]
     bssid: Option<String>,
+
+    // Target Client
+    #[arg(short, long)]
+    target: Option<String>,
 
     /// Channel
     #[arg(short, long)]
@@ -47,6 +51,7 @@ fn main() {
 
     let interface = cli.interface;
     let bssid = cli.bssid;
+    let target = cli.target;
     let channel = cli.channel;
     let handshake = cli.handshake;
 
@@ -55,14 +60,14 @@ fn main() {
         Arc::new(RwLock::new(HashMap::new()));
     let connected_client: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>> =
         Arc::new(RwLock::new(HashMap::new()));
-    let live_client: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>> =
-        Arc::new(RwLock::new(HashMap::new()));
+    // let live_client: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>> =
+    //     Arc::new(RwLock::new(HashMap::new()));
 
     let terminal_aps: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>> = Arc::clone(&aps);
     let terminal_connected: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>> =
         Arc::clone(&connected_client);
-    let terminal_live: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>> =
-        Arc::clone(&live_client);
+    // let terminal_live: Arc<RwLock<HashMap<String, (RadioInfo, PacketInfo)>>> =
+    //     Arc::clone(&live_client);
     let terminal_running = Arc::clone(&running);
 
     let worker_thread = thread::spawn(move || -> std::io::Result<()> {
@@ -72,7 +77,7 @@ fn main() {
             terminal_running,
             terminal_aps,
             terminal_connected,
-            terminal_live,
+            // terminal_live,
         )
     });
 
@@ -81,8 +86,8 @@ fn main() {
     let mut nl_ctrl = nl_gen::Ctrl::new(interface);
     nl_ctrl.bind();
 
-    match (bssid, channel, handshake) {
-        (None, None, None) => {
+    match (bssid, target, channel, handshake) {
+        (None, None, None, None) => {
             let interface_info = match nl_ctrl.interface_info() {
                 Some(iface) => iface,
                 None => panic!(),
@@ -169,7 +174,7 @@ fn main() {
             }
         }
 
-        (Some(target), Some(channel), None) => {
+        (Some(bssid), None, Some(channel), None) => {
             let freq = match channel_to_freq(channel) {
                 Some(freq) => freq,
                 None => panic!("Unsupported channel: {channel}"),
@@ -182,7 +187,7 @@ fn main() {
                 // thread::sleep(Duration::from_millis(200));
                 match af_ctrl.accept_timeout(200) {
                     Some((radio_info, packet_info, _)) => {
-                        if packet_info.transmitter == target {
+                        if packet_info.transmitter == bssid {
                             match packet_info.frame_name {
                                 FrameName::Beacon => {
                                     let worker_aps = Arc::clone(&aps);
@@ -224,7 +229,7 @@ fn main() {
             }
         }
 
-        (Some(target), Some(channel), Some(path)) => {
+        (Some(bssid), None, Some(channel), Some(path)) => {
             let freq = match channel_to_freq(channel) {
                 Some(freq) => freq,
                 None => panic!("Unsupported channel: {channel}"),
@@ -247,7 +252,7 @@ fn main() {
 
                 match af_ctrl.accept_timeout(200) {
                     Some((radio_info, packet_info, raw_packet)) => {
-                        if packet_info.transmitter != target && packet_info.receiver != target {
+                        if packet_info.transmitter != bssid && packet_info.receiver != bssid {
                             continue;
                         }
 
@@ -358,7 +363,128 @@ fn main() {
                 }
             }
         }
-        _ => panic!(),
+
+        (Some(bssid), Some(target), Some(channel), Some(path)) => {
+            let freq = match channel_to_freq(channel) {
+                Some(freq) => freq,
+                None => panic!("Unsupported channel: {channel}"),
+            };
+
+            let mut pcap_writer = match PcapWriter::new(&path) {
+                Ok(pw) => pw,
+                Err(_) => panic!("Unsupported path: {path}"),
+            };
+
+            nl_ctrl.set_frequency(freq);
+            af_ctrl.drain();
+
+            let mut targeted_client = String::new();
+            let mut handshake = Handshake::default();
+            let mut acceptd_beacon = false;
+
+            while running.load(Ordering::Relaxed) {
+                match af_ctrl.accept_timeout(200) {
+                    Some((radio_info, packet_info, raw_packet)) => {
+                        if !((packet_info.transmitter == bssid && packet_info.receiver == target)
+                            || (packet_info.transmitter == target && packet_info.receiver == bssid))
+                        {
+                            continue;
+                        }
+
+                        match packet_info.frame_name {
+                            FrameName::Beacon => {
+                                let worker_aps = Arc::clone(&aps);
+
+                                let mut aps = worker_aps.write().unwrap();
+                                let key = packet_info.bssid.clone();
+                                aps.insert(key, (radio_info, packet_info));
+
+                                if !acceptd_beacon {
+                                    acceptd_beacon = true;
+                                    let _ = pcap_writer.write_packet(&raw_packet);
+                                }
+                                continue;
+                            }
+
+                            FrameName::Data => {
+                                let worker_connected_client = Arc::clone(&connected_client);
+                                let mut connected_client = worker_connected_client.write().unwrap();
+
+                                let worker_aps = Arc::clone(&aps);
+
+                                let aps = worker_aps.read().unwrap();
+
+                                if !aps.contains_key(&packet_info.transmitter)
+                                    || packet_info.transmitter == packet_info.receiver
+                                {
+                                    continue;
+                                }
+
+                                let key = packet_info.receiver.clone();
+
+                                if is_multicast_mac(&key) {
+                                    continue;
+                                }
+
+                                connected_client.insert(key, (radio_info, packet_info));
+                            }
+
+                            FrameName::EapolKeyMessage1 => {
+                                // AP -> Client
+                                targeted_client = packet_info.receiver.clone();
+                                handshake.message1.found = true;
+                                handshake.message1.packet = raw_packet;
+                            }
+
+                            FrameName::EapolKeyMessage2 => {
+                                // Client -> AP
+                                if packet_info.transmitter == targeted_client {
+                                    handshake.message2.found = true;
+                                    handshake.message2.packet = raw_packet;
+                                }
+                            }
+
+                            FrameName::EapolKeyMessage3 => {
+                                // AP -> Client
+                                if packet_info.receiver == targeted_client {
+                                    handshake.message3.found = true;
+                                    handshake.message3.packet = raw_packet;
+                                }
+                            }
+
+                            FrameName::EapolKeyMessage4 => {
+                                // Client -> AP
+                                if packet_info.transmitter == targeted_client {
+                                    handshake.message4.found = true;
+                                    handshake.message4.packet = raw_packet;
+                                }
+                            }
+
+                            _ => {}
+                        }
+
+                        if handshake.message1.found
+                            && handshake.message2.found
+                            && handshake.message3.found
+                            && handshake.message4.found
+                        {
+                            let _ = pcap_writer.write_packet(&handshake.message1.packet);
+                            let _ = pcap_writer.write_packet(&handshake.message2.packet);
+
+                            let _ = pcap_writer.write_packet(&handshake.message3.packet);
+
+                            let _ = pcap_writer.write_packet(&handshake.message4.packet);
+
+                            running.store(false, Ordering::Relaxed);
+                            println!("\n[+] Handshake captured successfully!");
+                        }
+                    }
+
+                    None => {}
+                }
+            }
+        }
+        _ => panic!("Unknow Commands"),
     }
 
     let _ = worker_thread.join().unwrap();
