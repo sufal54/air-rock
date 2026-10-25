@@ -28,7 +28,19 @@ impl Ctrl {
         self.service.deauth(target, bssid);
     }
 
-    pub fn beacons(&self, bssid: [u8; 6], ssid: &str) {
-        self.service.beacons(bssid, ssid);
+    pub fn beacons(&self, bssid: [u8; 6], ssid: &str, channel: u16, seq_counter: u16) {
+        self.service.beacons(bssid, ssid, channel, seq_counter);
+    }
+
+    pub fn prope_responce(
+        &self,
+        ap_mac: [u8; 6],
+        client_mac: [u8; 6],
+        ssid: &str,
+        channel: u16,
+        seq_counter: u16,
+    ) {
+        self.service
+            .probe_response(ap_mac, client_mac, ssid, channel, seq_counter);
     }
 }

@@ -10,7 +10,10 @@ use air_apis::{
     air_recv, pollfd, sockaddr, sockaddr_ll,
 };
 
-use crate::af_eth::{ControlFrame, FrameName, PacketInfo, RadioInfo, RadioTab, Security};
+use crate::{
+    af_eth::{ControlFrame, FrameName, PacketInfo, RadioInfo, RadioTab, Security},
+    helper::channel_to_freq,
+};
 
 pub struct Service {
     sock_fd: OwnedFd,
@@ -133,7 +136,7 @@ impl Service {
         if packet.len() < 8 {
             return None;
         }
-        let (radio_info, radiotap_len) = self.parse_radiotap(packet).unwrap();
+        let (radio_info, radiotap_len) = self.parse_radiotap(packet)?;
         // let version = packet[0];
 
         // if version != 0 {
@@ -223,7 +226,7 @@ impl Service {
                 packet_info.capture_frequency = Some(freq);
             }
             None => {
-                println!("Capture Frequency: Unknown");
+                // println!("Capture Frequency: Unknown");
             }
         }
 
@@ -468,9 +471,6 @@ impl Service {
                     }
 
                     // Rate
-                    //
-                    // Radiotap stores legacy rate in 500 Kbps units.
-                    // 54 Mbps => 108 => 54.0 Mbps
                     2 => {
                         radio.rate = Some(data[0] as f32 * 0.5);
                     }
@@ -574,14 +574,6 @@ impl Service {
     // Control frame parser
 
     fn parse_control_frame(&self, wifi: &[u8], subtype: u8) {
-        // Most control frames contain:
-        //
-        // Frame Control : 2
-        // Duration      : 2
-        // Receiver      : 6
-        //
-        // Some subtypes additionally contain Transmitter Address.
-        //
         if wifi.len() < 10 {
             return;
         }
@@ -591,14 +583,6 @@ impl Service {
         let mut receiver = [0u8; 6];
         receiver.copy_from_slice(&wifi[4..10]);
 
-        // println!("Duration    : {}", duration);
-        // println!("Receiver    : {}", self.mac(&receiver));
-
-        // RTS (subtype 11) has TA after RA.
-        //
-        // PS-Poll (10) also has BSSID/TA-like second address.
-        //
-        // CF-End / CF-End+CF-Ack have additional address.
         match subtype {
             10 | 11 | 12 | 13 => {
                 if wifi.len() >= 16 {
@@ -617,14 +601,7 @@ impl Service {
 
     fn parse_beacon(&self, wifi: &[u8], packet_info: &mut PacketInfo) {
         // Management header = 24 bytes
-        //
-        // Beacon fixed fields:
-        //
-        // Timestamp  8
-        // Interval   2
-        // Capability 2
-        //
-        // Total = 36
+
         if wifi.len() < 36 {
             return;
         }
@@ -792,12 +769,10 @@ impl Service {
         // Calculate dynamic 802.11 Header size
         let mut pos = 24;
 
-        // 4th address present in WDS frames (ToDS=1 and FromDS=1)
         if to_ds && from_ds {
             pos += 6;
         }
 
-        // QoS Data frames (Subtypes 8..15) add 2 bytes for QoS Control
         if subtype >= 8 {
             pos += 2; // QoS Control
 
@@ -830,7 +805,6 @@ impl Service {
 
         let eapol_type = wifi[pos + 1];
         if eapol_type != 3 {
-            // 3 = EAPOL-Key
             return Some(FrameName::Eapol);
         }
         pos += 4; // Past EAPOL Header
@@ -848,19 +822,12 @@ impl Service {
 
         let key_info = u16::from_be_bytes([wifi[pos + 1], wifi[pos + 2]]);
 
-        // Bit positions in Big-Endian Key Info:
-        // Bit 3  (1 << 3)  -> Key Type (1 = Pairwise, 0 = Group)
-        // Bit 6  (1 << 6)  -> Install
-        // Bit 7  (1 << 7)  -> Key Ack
-        // Bit 8  (1 << 8)  -> Key MIC
-        // Bit 9  (1 << 9)  -> Secure
-        // Bit 12 (1 << 12) -> Encrypted Key Data   <-- was incorrectly bit 13
         let key_type_pairwise = (key_info & (1 << 3)) != 0;
         let install = (key_info & (1 << 6)) != 0;
         let key_ack = (key_info & (1 << 7)) != 0;
         let key_mic = (key_info & (1 << 8)) != 0;
         let secure = (key_info & (1 << 9)) != 0;
-        let encrypted_data = (key_info & (1 << 12)) != 0; // fixed: was (1 << 13)
+        let encrypted_data = (key_info & (1 << 12)) != 0;
 
         // Ignore Group Key handshake frames (bit 3 == 0)
         if !key_type_pairwise {
@@ -869,16 +836,12 @@ impl Service {
 
         // Classification Logic for 4-Way Pairwise Handshake
         if key_ack && !key_mic {
-            // Msg 1: AP -> STA (Ack set, MIC clear)
             Some(FrameName::EapolKeyMessage1)
         } else if !key_ack && key_mic && !secure {
-            // Msg 2: STA -> AP (Ack clear, MIC set, Secure clear)
             Some(FrameName::EapolKeyMessage2)
         } else if key_ack && key_mic && (install || encrypted_data) {
-            // Msg 3: AP -> STA (Ack set, MIC set, Install or Encrypted Data set)
             Some(FrameName::EapolKeyMessage3)
         } else if !key_ack && key_mic && secure {
-            // Msg 4: STA -> AP (Ack clear, MIC set, Secure set)
             Some(FrameName::EapolKeyMessage4)
         } else {
             Some(FrameName::Eapol)
@@ -886,15 +849,6 @@ impl Service {
     }
 
     fn parse_rsn_security(&self, data: &[u8]) -> Security {
-        // RSN:
-        //
-        // Version              2 bytes
-        // Group Cipher         4 bytes
-        // Pairwise Count       2 bytes
-        // Pairwise Suites      4 * count
-        // AKM Count            2 bytes
-        // AKM Suites           4 * count
-
         if data.len() < 8 {
             return Security::Unknown;
         }
@@ -948,7 +902,6 @@ impl Service {
             let oui = &data[pos..pos + 3];
             let akm_type = data[pos + 3];
 
-            // 00:0F:AC = IEEE 802.11 RSN
             if oui == [0x00, 0x0F, 0xAC] {
                 match akm_type {
                     // PSK
@@ -982,7 +935,7 @@ impl Service {
 
         let mut control_frame = ControlFrame::default();
         control_frame.frame_control = 0x00C0;
-        control_frame.reason_code = 3;
+        control_frame.reason_code = Some(3);
         control_frame.addr1 = target;
         control_frame.addr2 = bssid;
         control_frame.addr3 = bssid;
@@ -1019,36 +972,95 @@ impl Service {
         }
     }
 
-    pub fn beacons(&self, bssid: [u8; 6], ssid: &str) {
-        let mut radio_tab = RadioTab::default();
-        radio_tab.len = 8;
+    pub fn beacons(&self, bssid: [u8; 6], ssid: &str, channel: u16, seq_counter: u16) {
+        let freq = channel_to_freq(channel as u16).unwrap();
+
+        let mut packet = Vec::with_capacity(256);
+
+        let mut radio_tap = RadioTab::default();
+
+        radio_tap.version = 0;
+        radio_tap.pad = 0;
+        radio_tap.len = 14;
+        radio_tap.present = 0x0000000C;
+        radio_tap.rate = 0x02;
+        radio_tap.channel_freq = freq as u16;
+
+        radio_tap.channel_flags = match freq {
+            2400..=2500 => 0x0080, // 2.4 GHz band
+            4900..=5900 => 0x0100, // 5 GHz band
+            _ => 0x0000,           // Unknown / unsupported range
+        };
+
+        packet.extend_from_slice(&radio_tap.to_bytes());
 
         let broadcast_addr: [u8; 6] = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
 
-        let mut management_frame = ControlFrame::default();
-        management_frame.frame_control = 0x8000;
-        management_frame.duration_id = 0;
-        management_frame.addr1 = broadcast_addr; // Broadcast
-        management_frame.addr2 = bssid; // Source (AP)
-        management_frame.addr3 = bssid; // BSSID
+        let mut control_frame = ControlFrame::default();
+        control_frame.frame_control = 0x0080; // Beacon frame subtype
+        control_frame.duration_id = 0;
+        control_frame.addr1 = broadcast_addr; // Destination (Broadcast)
+        control_frame.addr2 = bssid; // Source (AP BSSID)
+        control_frame.addr3 = bssid; // BSSID
 
-        let timestamp: u64 = 0;
-        let beacon_interval: u16 = 0x0064;
-        let capabilities: u16 = 0x0431;
+        let seq = (seq_counter & 0x0FFF) << 4;
+        control_frame.sequence_ctrl = seq;
 
-        let mut ssid_element = vec![0, ssid.len() as u8];
-        ssid_element.extend_from_slice(ssid.as_bytes());
+        packet.extend_from_slice(&control_frame.to_bytes());
 
-        let mut packet = Vec::with_capacity(64);
+        let timestamp = 0 as u64;
+        let beacon_interval: u16 = 100; // 100 TU (Target Beacon Transmission Time)
+        // Bit 4 set (0x0010) enables Privacy so devices recognize it as a secure network
+        let capabilities: u16 = 0x0411;
 
-        packet.extend_from_slice(&radio_tab.to_bytes());
-        packet.extend_from_slice(&management_frame.to_bytes());
-
-        // Append beacon body fields
         packet.extend_from_slice(&timestamp.to_le_bytes());
         packet.extend_from_slice(&beacon_interval.to_le_bytes());
         packet.extend_from_slice(&capabilities.to_le_bytes());
-        packet.extend_from_slice(&ssid_element);
+
+        // SSID Element (ID 0)
+        if ssid.len() > 32 {
+            panic!("SSID too long");
+        }
+        packet.push(0);
+        packet.push(ssid.len() as u8);
+        packet.extend_from_slice(ssid.as_bytes());
+
+        // Supported Rates Element (ID 1)
+        packet.push(1);
+        packet.push(8);
+        packet.extend_from_slice(&[0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24]);
+
+        // DS Parameter Set / Channel Element (ID 3)
+        packet.push(3);
+        packet.push(1);
+        packet.push(channel as u8);
+
+        // Country Information Element (ID 7)
+        packet.push(7);
+        packet.push(6);
+        packet.extend_from_slice(b"US ");
+        packet.extend_from_slice(&[1, 11, 0]); // First channel, 11 channels, max power
+
+        // TIM Element - Traffic Indication Map (ID 5)
+        packet.extend_from_slice(&[5, 4, 0, 1, 0, 0]);
+
+        // RSN Element - WPA2 Security (ID 48 / 0x30)
+        packet.extend_from_slice(&[
+            48, // Element ID: RSN
+            20, // Length: 20 bytes
+            1, 0, // Version 1
+            0x00, 0x0f, 0xac, 0x04, // Group Cipher: CCMP (AES)
+            1, 0, // Pairwise Cipher Count: 1
+            0x00, 0x0f, 0xac, 0x04, // Pairwise Cipher: CCMP (AES)
+            1, 0, // AKM Count: 1
+            0x00, 0x0f, 0xac, 0x02, // AKM Suite: PSK (WPA2-Personal)
+            0x00, 0x00, // RSN Capabilities
+        ]);
+
+        // Extended Supported Rates Element (ID 50)
+        packet.push(50);
+        packet.push(4);
+        packet.extend_from_slice(&[0x30, 0x48, 0x60, 0x6c]);
 
         let mut addr = sockaddr_ll {
             sll_family: AF_PACKET as u16,
@@ -1059,20 +1071,116 @@ impl Service {
             sll_halen: 6,
             sll_addr: [0; 8],
         };
-        // Destination for raw socket layer can be broadcast or target
         addr.sll_addr[..6].copy_from_slice(&broadcast_addr);
 
         let iov = [IoSlice::new(&packet)];
-
         let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
-
         msg.msg_name = &mut addr as *mut _ as *mut libc::c_void;
         msg.msg_namelen = std::mem::size_of::<sockaddr_ll>() as libc::socklen_t;
         msg.msg_iov = iov.as_ptr() as *mut libc::iovec;
         msg.msg_iovlen = iov.len();
 
         let result = unsafe { libc::sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
+        if result < 0 {
+            eprintln!("sendmsg failed: {}", std::io::Error::last_os_error());
+        }
+    }
 
+    pub fn probe_response(
+        &self,
+        ap_mac: [u8; 6],
+        client_mac: [u8; 6],
+        ssid: &str,
+        channel: u16,
+        seq_counter: u16,
+    ) {
+        if ssid.len() > 32 {
+            panic!("SSID must not exceed 32 bytes")
+        }
+
+        let freq = channel_to_freq(channel).unwrap();
+        let mut packet = Vec::with_capacity(256);
+
+        let mut radio_tap = RadioTab::default();
+
+        radio_tap.version = 0;
+        radio_tap.pad = 0;
+        radio_tap.len = 18;
+        radio_tap.present = 0x0000002E;
+        radio_tap.tsft = Some(0);
+        radio_tap.flags = Some(0x00);
+        radio_tap.rate = 0x02;
+        radio_tap.channel_freq = freq as u16;
+        radio_tap.channel_flags = match freq {
+            2400..=2500 => 0x0080, // 2.4 GHz band
+            4900..=5900 => 0x0100, // 5 GHz band
+            _ => 0x0000,           // Unknown / unsupported range
+        };
+
+        packet.extend_from_slice(&radio_tap.to_bytes());
+
+        let mut frame = ControlFrame::default();
+
+        frame.frame_control = 0x0050;
+        frame.duration_id = 0;
+        frame.addr1 = client_mac; // Receiver
+        frame.addr2 = ap_mac; // Transmitter
+        frame.addr3 = ap_mac; // BSSID
+        frame.sequence_ctrl = (seq_counter & 0x0FFF) << 4;
+
+        packet.extend_from_slice(&frame.to_bytes());
+
+        let timestamp = 0 as u64;
+        let beacon_interval: u16 = 100;
+        let capabilities: u16 = 0x0411; // Privacy bit set to match WPA2
+
+        packet.extend_from_slice(&timestamp.to_le_bytes());
+        packet.extend_from_slice(&beacon_interval.to_le_bytes());
+        packet.extend_from_slice(&capabilities.to_le_bytes());
+
+        // SSID IE.
+        packet.push(0);
+        packet.push(ssid.len() as u8);
+        packet.extend_from_slice(ssid.as_bytes());
+
+        // Supported Rates IE.
+        packet.push(1);
+        packet.push(8);
+        packet.extend_from_slice(&[0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24]);
+
+        // DS Parameter Set IE.
+        packet.push(3);
+        packet.push(1);
+        packet.push(channel as u8);
+
+        // RSN Element - WPA2 Security (ID 48 / 0x30)
+        packet.extend_from_slice(&[
+            48, // Element ID: RSN
+            20, // Length: 20 bytes
+            1, 0, // Version 1
+            0x00, 0x0f, 0xac, 0x04, // Group Cipher: CCMP (AES)
+            1, 0, // Pairwise Cipher Count: 1
+            0x00, 0x0f, 0xac, 0x04, // Pairwise Cipher: CCMP (AES)
+            1, 0, // AKM Count: 1
+            0x00, 0x0f, 0xac, 0x02, // AKM Suite: PSK (WPA2-Personal)
+            0x00, 0x00, // RSN Capabilities
+        ]);
+
+        let mut addr: sockaddr_ll = unsafe { std::mem::zeroed() };
+        addr.sll_family = AF_PACKET as u16;
+        addr.sll_protocol = (ETH_P_ALL as u16).to_be();
+        addr.sll_ifindex = self.if_index as i32;
+        addr.sll_halen = 6;
+        addr.sll_addr[..6].copy_from_slice(&client_mac);
+
+        let iov = [IoSlice::new(&packet)];
+        let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+        msg.msg_name = &mut addr as *mut _ as *mut libc::c_void;
+        msg.msg_namelen = std::mem::size_of::<sockaddr_ll>() as libc::socklen_t;
+        msg.msg_iov = iov.as_ptr() as *mut libc::iovec;
+        msg.msg_iovlen = iov.len();
+
+        let result = unsafe { libc::sendmsg(self.sock_fd.as_raw_fd(), &msg, 0) };
         if result < 0 {
             eprintln!("sendmsg failed: {}", std::io::Error::last_os_error());
         }

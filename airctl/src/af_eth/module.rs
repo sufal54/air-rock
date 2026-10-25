@@ -185,18 +185,37 @@ pub struct RadioTab {
     pub pad: u8,
     pub len: u16,
     pub present: u32,
+
+    pub tsft: Option<u64>,
+    pub flags: Option<u8>,
+    pub rate: u8,
+    pub channel_freq: u16,
+    pub channel_flags: u16,
 }
 
 impl RadioTab {
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(8);
+        let mut bytes = Vec::new();
 
-        // Add the actual fields of your RadioTab here.
-        // Example:
-        bytes.extend_from_slice(&self.version.to_le_bytes());
-        bytes.extend_from_slice(&self.pad.to_le_bytes());
+        bytes.push(self.version);
+        bytes.push(self.pad);
         bytes.extend_from_slice(&self.len.to_le_bytes());
         bytes.extend_from_slice(&self.present.to_le_bytes());
+        if let Some(tsft) = self.tsft {
+            bytes.extend_from_slice(&tsft.to_le_bytes());
+        }
+
+        if let Some(flags) = self.flags {
+            bytes.extend_from_slice(&flags.to_le_bytes());
+        }
+        bytes.push(self.rate);
+
+        while bytes.len() % 2 != 0 {
+            bytes.push(0);
+        }
+
+        bytes.extend_from_slice(&self.channel_freq.to_le_bytes());
+        bytes.extend_from_slice(&self.channel_flags.to_le_bytes());
 
         bytes
     }
@@ -211,7 +230,7 @@ pub struct ControlFrame {
     pub addr2: [u8; 6],
     pub addr3: [u8; 6],
     pub sequence_ctrl: u16,
-    pub reason_code: u16,
+    pub reason_code: Option<u16>,
 }
 
 impl ControlFrame {
@@ -224,7 +243,9 @@ impl ControlFrame {
         bytes.extend_from_slice(&self.addr2);
         bytes.extend_from_slice(&self.addr3);
         bytes.extend_from_slice(&self.sequence_ctrl.to_le_bytes());
-        bytes.extend_from_slice(&self.reason_code.to_le_bytes());
+        if let Some(reason_code) = self.reason_code {
+            bytes.extend_from_slice(&reason_code.to_le_bytes());
+        }
 
         bytes
     }

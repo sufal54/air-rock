@@ -90,11 +90,11 @@ fn main() {
         (None, None, None, None) => {
             let interface_info = match nl_ctrl.interface_info() {
                 Some(iface) => iface,
-                None => panic!(),
+                None => panic!("Interface not found"),
             };
             let max_freq = match interface_info.max_frequency {
                 Some(freq) => freq,
-                None => panic!(),
+                None => panic!("Uunknow Channel"),
             };
 
             let end = CHANNEL_FREQ_MAP.partition_point(|&(_, freq)| freq <= max_freq);
@@ -109,7 +109,7 @@ fn main() {
                     af_ctrl.drain();
 
                     match af_ctrl.accept_timeout(200) {
-                        Some((radio_info, packet_info, _)) => {
+                        Some((radio_info, packet_info, raw)) => {
                             match packet_info.frame_name {
                                 FrameName::Beacon => {
                                     let worker_aps = Arc::clone(&aps);
@@ -434,6 +434,10 @@ fn main() {
                                 targeted_client = packet_info.receiver.clone();
                                 handshake.message1.found = true;
                                 handshake.message1.packet = raw_packet;
+
+                                handshake.message2.found = false;
+                                handshake.message3.found = false;
+                                handshake.message4.found = false;
                             }
 
                             FrameName::EapolKeyMessage2 => {

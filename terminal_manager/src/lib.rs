@@ -130,7 +130,8 @@ impl TerminalManager {
             execute!(
                 self.stdout,
                 cursor::MoveTo(0, 0),
-                terminal::Clear(ClearType::FromCursorDown)
+                terminal::Clear(ClearType::FromCursorDown),
+                terminal::Clear(ClearType::FromCursorUp)
             )?;
 
             let (_, height) = terminal::size()?;
