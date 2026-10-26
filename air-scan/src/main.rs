@@ -109,7 +109,7 @@ fn main() {
                     af_ctrl.drain();
 
                     match af_ctrl.accept_timeout(200) {
-                        Some((radio_info, packet_info, raw)) => {
+                        Some((radio_info, packet_info, _)) => {
                             match packet_info.frame_name {
                                 FrameName::Beacon => {
                                     let worker_aps = Arc::clone(&aps);

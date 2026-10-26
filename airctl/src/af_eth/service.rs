@@ -933,9 +933,9 @@ impl Service {
         let mut radio_tab = RadioTab::default();
         radio_tab.len = 8;
 
-        let mut control_frame = ControlFrame::default();
+        let mut control_frame = ControlFrame::dauth();
         control_frame.frame_control = 0x00C0;
-        control_frame.reason_code = Some(3);
+        control_frame.reason_code = 3;
         control_frame.addr1 = target;
         control_frame.addr2 = bssid;
         control_frame.addr3 = bssid;
@@ -996,7 +996,7 @@ impl Service {
 
         let broadcast_addr: [u8; 6] = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
 
-        let mut control_frame = ControlFrame::default();
+        let mut control_frame = ControlFrame::bcon();
         control_frame.frame_control = 0x0080; // Beacon frame subtype
         control_frame.duration_id = 0;
         control_frame.addr1 = broadcast_addr; // Destination (Broadcast)
@@ -1006,61 +1006,63 @@ impl Service {
         let seq = (seq_counter & 0x0FFF) << 4;
         control_frame.sequence_ctrl = seq;
 
-        packet.extend_from_slice(&control_frame.to_bytes());
-
-        let timestamp = 0 as u64;
-        let beacon_interval: u16 = 100; // 100 TU (Target Beacon Transmission Time)
-        // Bit 4 set (0x0010) enables Privacy so devices recognize it as a secure network
-        let capabilities: u16 = 0x0411;
-
-        packet.extend_from_slice(&timestamp.to_le_bytes());
-        packet.extend_from_slice(&beacon_interval.to_le_bytes());
-        packet.extend_from_slice(&capabilities.to_le_bytes());
+        control_frame.timestamp = 0;
+        control_frame.beacon_interval = 100;
+        control_frame.capabilities = 0x0411;
 
         // SSID Element (ID 0)
         if ssid.len() > 32 {
             panic!("SSID too long");
         }
-        packet.push(0);
-        packet.push(ssid.len() as u8);
-        packet.extend_from_slice(ssid.as_bytes());
 
-        // Supported Rates Element (ID 1)
-        packet.push(1);
-        packet.push(8);
-        packet.extend_from_slice(&[0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24]);
+        control_frame.ssid_pad = 0;
+        control_frame.ssid_len = ssid.len() as u8;
+        control_frame.ssid[..ssid.len()].copy_from_slice(ssid.as_bytes());
 
-        // DS Parameter Set / Channel Element (ID 3)
-        packet.push(3);
-        packet.push(1);
-        packet.push(channel as u8);
+        // Supported Rates Element
+        control_frame.supported_rates_id = 1;
+        control_frame.supported_rates_len = 8;
+        control_frame.supported_rates = [0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24];
 
-        // Country Information Element (ID 7)
-        packet.push(7);
-        packet.push(6);
-        packet.extend_from_slice(b"US ");
-        packet.extend_from_slice(&[1, 11, 0]); // First channel, 11 channels, max power
+        // DS Parameter Set / Channel Element ;
+        control_frame.ds_parameter_set_id = 3;
+        control_frame.ds_parameter_set_len = 1;
+        control_frame.channel = channel as u8;
 
-        // TIM Element - Traffic Indication Map (ID 5)
-        packet.extend_from_slice(&[5, 4, 0, 1, 0, 0]);
+        // Country Information Element
+        control_frame.country_id = 7;
+        control_frame.country_len = 6;
+        control_frame.country_code = *b"US ";
+        control_frame.first_channel = 1;
+        control_frame.channel_count = 11;
+        control_frame.max_tx_power = 0;
 
-        // RSN Element - WPA2 Security (ID 48 / 0x30)
-        packet.extend_from_slice(&[
-            48, // Element ID: RSN
-            20, // Length: 20 bytes
-            1, 0, // Version 1
-            0x00, 0x0f, 0xac, 0x04, // Group Cipher: CCMP (AES)
-            1, 0, // Pairwise Cipher Count: 1
-            0x00, 0x0f, 0xac, 0x04, // Pairwise Cipher: CCMP (AES)
-            1, 0, // AKM Count: 1
-            0x00, 0x0f, 0xac, 0x02, // AKM Suite: PSK (WPA2-Personal)
-            0x00, 0x00, // RSN Capabilities
-        ]);
+        // TIM Element - Traffic Indication Map
+        control_frame.tim_id = 5;
+        control_frame.tim_len = 4;
+        control_frame.dtim_count = 0;
+        control_frame.dtim_period = 1;
+        control_frame.bitmap_control = 0;
+        control_frame.partial_virtual_bitmap = 0;
 
-        // Extended Supported Rates Element (ID 50)
-        packet.push(50);
-        packet.push(4);
-        packet.extend_from_slice(&[0x30, 0x48, 0x60, 0x6c]);
+        // RSN Element - WPA2 Security
+
+        control_frame.rsn_id = 48;
+        control_frame.rsn_len = 20;
+        control_frame.rsn_version = 1;
+        control_frame.group_cipher = [0x00, 0x0f, 0xac, 0x04];
+        control_frame.pairwise_cipher_count = 1;
+        control_frame.pairwise_cipher = [0x00, 0x0f, 0xac, 0x04];
+        control_frame.akm_count = 1;
+        control_frame.akm_suite = [0x00, 0x0f, 0xac, 0x02];
+        control_frame.rsn_capabilities = 0;
+
+        // Extended Supported Rates Element
+        control_frame.extended_supported_rates_id = 50;
+        control_frame.extended_supported_rates_len = 4;
+        control_frame.extended_supported_rates = [0x30, 0x48, 0x60, 0x6c];
+
+        packet.extend_from_slice(&control_frame.to_bytes());
 
         let mut addr = sockaddr_ll {
             sll_family: AF_PACKET as u16,
@@ -1119,52 +1121,47 @@ impl Service {
 
         packet.extend_from_slice(&radio_tap.to_bytes());
 
-        let mut frame = ControlFrame::default();
+        let mut frame = ControlFrame::prop_res();
 
         frame.frame_control = 0x0050;
         frame.duration_id = 0;
-        frame.addr1 = client_mac; // Receiver
-        frame.addr2 = ap_mac; // Transmitter
-        frame.addr3 = ap_mac; // BSSID
+        frame.addr1 = client_mac;
+        frame.addr2 = ap_mac;
+        frame.addr3 = ap_mac;
         frame.sequence_ctrl = (seq_counter & 0x0FFF) << 4;
 
+        frame.timestamp = 0;
+        frame.beacon_interval = 100;
+        frame.capabilities = 0x0411;
+
+        // SSID IE
+        frame.ssid_pad = 0;
+        frame.ssid_len = ssid.len() as u8;
+        frame.ssid = [0; 32];
+        frame.ssid[..ssid.len()].copy_from_slice(ssid.as_bytes());
+
+        // Supported Rates IE
+        frame.supported_rates_id = 1;
+        frame.supported_rates_len = 8;
+        frame.supported_rates = [0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24];
+
+        // DS Parameter Set IE
+        frame.ds_parameter_set_id = 3;
+        frame.ds_parameter_set_len = 1;
+        frame.channel = channel as u8;
+
+        // RSN IE — WPA2-Personal / CCMP
+        frame.rsn_id = 48;
+        frame.rsn_len = 20;
+        frame.rsn_version = 1;
+        frame.group_cipher = [0x00, 0x0f, 0xac, 0x04];
+        frame.pairwise_cipher_count = 1;
+        frame.pairwise_cipher = [0x00, 0x0f, 0xac, 0x04];
+        frame.akm_count = 1;
+        frame.akm_suite = [0x00, 0x0f, 0xac, 0x02];
+        frame.rsn_capabilities = 0;
+
         packet.extend_from_slice(&frame.to_bytes());
-
-        let timestamp = 0 as u64;
-        let beacon_interval: u16 = 100;
-        let capabilities: u16 = 0x0411; // Privacy bit set to match WPA2
-
-        packet.extend_from_slice(&timestamp.to_le_bytes());
-        packet.extend_from_slice(&beacon_interval.to_le_bytes());
-        packet.extend_from_slice(&capabilities.to_le_bytes());
-
-        // SSID IE.
-        packet.push(0);
-        packet.push(ssid.len() as u8);
-        packet.extend_from_slice(ssid.as_bytes());
-
-        // Supported Rates IE.
-        packet.push(1);
-        packet.push(8);
-        packet.extend_from_slice(&[0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24]);
-
-        // DS Parameter Set IE.
-        packet.push(3);
-        packet.push(1);
-        packet.push(channel as u8);
-
-        // RSN Element - WPA2 Security (ID 48 / 0x30)
-        packet.extend_from_slice(&[
-            48, // Element ID: RSN
-            20, // Length: 20 bytes
-            1, 0, // Version 1
-            0x00, 0x0f, 0xac, 0x04, // Group Cipher: CCMP (AES)
-            1, 0, // Pairwise Cipher Count: 1
-            0x00, 0x0f, 0xac, 0x04, // Pairwise Cipher: CCMP (AES)
-            1, 0, // AKM Count: 1
-            0x00, 0x0f, 0xac, 0x02, // AKM Suite: PSK (WPA2-Personal)
-            0x00, 0x00, // RSN Capabilities
-        ]);
 
         let mut addr: sockaddr_ll = unsafe { std::mem::zeroed() };
         addr.sll_family = AF_PACKET as u16;

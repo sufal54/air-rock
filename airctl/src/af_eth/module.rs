@@ -221,7 +221,7 @@ impl RadioTab {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 #[repr(C, packed)]
 pub struct ControlFrame {
     pub frame_control: u16,
@@ -233,7 +233,19 @@ pub struct ControlFrame {
     pub reason_code: Option<u16>,
 }
 
-impl ControlFrame {
+#[derive(Default)]
+#[repr(C, packed)]
+pub struct Dauth {
+    pub frame_control: u16,
+    pub duration_id: u16,
+    pub addr1: [u8; 6],
+    pub addr2: [u8; 6],
+    pub addr3: [u8; 6],
+    pub sequence_ctrl: u16,
+    pub reason_code: u16,
+}
+
+impl Dauth {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(26);
 
@@ -243,10 +255,226 @@ impl ControlFrame {
         bytes.extend_from_slice(&self.addr2);
         bytes.extend_from_slice(&self.addr3);
         bytes.extend_from_slice(&self.sequence_ctrl.to_le_bytes());
-        if let Some(reason_code) = self.reason_code {
-            bytes.extend_from_slice(&reason_code.to_le_bytes());
-        }
+        bytes.extend_from_slice(&self.reason_code.to_le_bytes());
 
         bytes
+    }
+}
+
+#[derive(Default)]
+#[repr(C, packed)]
+pub struct Bcon {
+    pub frame_control: u16,
+    pub duration_id: u16,
+    pub addr1: [u8; 6],
+    pub addr2: [u8; 6],
+    pub addr3: [u8; 6],
+    pub sequence_ctrl: u16,
+
+    pub timestamp: u64,
+    pub beacon_interval: u16,
+    pub capabilities: u16,
+    // SSID
+    pub ssid_pad: u8,
+    pub ssid_len: u8,
+    pub ssid: [u8; 32],
+
+    // Supported Rates Element
+    pub supported_rates_id: u8,
+    pub supported_rates_len: u8,
+    pub supported_rates: [u8; 8],
+
+    // DS Parameter Set / Channel Element
+    pub ds_parameter_set_id: u8,
+    pub ds_parameter_set_len: u8,
+    pub channel: u8,
+
+    // Country Information Element
+    pub country_id: u8,
+    pub country_len: u8,
+    pub country_code: [u8; 3], // Country code
+    pub first_channel: u8,
+    pub channel_count: u8, // Number of channels
+    pub max_tx_power: u8,  // Maximum transmit power (dBm)
+
+    // TIM Element
+    pub tim_id: u8,
+    pub tim_len: u8,
+    pub dtim_count: u8,
+    pub dtim_period: u8,
+    pub bitmap_control: u8,
+    pub partial_virtual_bitmap: u8,
+
+    // RSN Element
+    pub rsn_id: u8,
+    pub rsn_len: u8,
+    pub rsn_version: u16,
+    pub group_cipher: [u8; 4],
+    pub pairwise_cipher_count: u16,
+    pub pairwise_cipher: [u8; 4],
+    pub akm_count: u16,
+    pub akm_suite: [u8; 4],
+    pub rsn_capabilities: u16,
+
+    // Extended Supported Rates Element
+    pub extended_supported_rates_id: u8,
+    pub extended_supported_rates_len: u8,
+    pub extended_supported_rates: [u8; 4],
+}
+
+impl Bcon {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+
+        bytes.extend_from_slice(&self.frame_control.to_le_bytes());
+        bytes.extend_from_slice(&self.duration_id.to_le_bytes());
+        bytes.extend_from_slice(&self.addr1);
+        bytes.extend_from_slice(&self.addr2);
+        bytes.extend_from_slice(&self.addr3);
+        bytes.extend_from_slice(&self.sequence_ctrl.to_le_bytes());
+
+        bytes.extend_from_slice(&self.timestamp.to_le_bytes());
+        bytes.extend_from_slice(&self.beacon_interval.to_le_bytes());
+        bytes.extend_from_slice(&self.capabilities.to_le_bytes());
+
+        bytes.push(self.ssid_pad);
+        bytes.push(self.ssid_len);
+        bytes.extend_from_slice(&self.ssid[..self.ssid_len as usize]);
+
+        bytes.push(self.supported_rates_id);
+        bytes.push(self.supported_rates_len);
+        bytes.extend_from_slice(&self.supported_rates);
+
+        bytes.push(self.ds_parameter_set_id);
+        bytes.push(self.ds_parameter_set_len);
+        bytes.push(self.channel);
+
+        bytes.push(self.country_id);
+        bytes.push(self.country_len);
+        bytes.extend_from_slice(&self.country_code);
+        bytes.push(self.first_channel);
+        bytes.push(self.channel_count);
+        bytes.push(self.max_tx_power);
+
+        bytes.push(self.tim_id);
+        bytes.push(self.tim_len);
+        bytes.push(self.dtim_count);
+        bytes.push(self.dtim_period);
+        bytes.push(self.bitmap_control);
+        bytes.push(self.partial_virtual_bitmap);
+
+        // RSN Element
+        bytes.push(self.rsn_id);
+        bytes.push(self.rsn_len);
+        bytes.extend_from_slice(&self.rsn_version.to_le_bytes());
+        bytes.extend_from_slice(&self.group_cipher);
+        bytes.extend_from_slice(&self.pairwise_cipher_count.to_le_bytes());
+        bytes.extend_from_slice(&self.pairwise_cipher);
+        bytes.extend_from_slice(&self.akm_count.to_le_bytes());
+        bytes.extend_from_slice(&self.akm_suite);
+        bytes.extend_from_slice(&self.rsn_capabilities.to_le_bytes());
+
+        // Extended Supported Rates Element
+        bytes.push(self.extended_supported_rates_id);
+        bytes.push(self.extended_supported_rates_len);
+        bytes.extend_from_slice(&self.extended_supported_rates);
+
+        bytes
+    }
+}
+
+#[derive(Default)]
+#[repr(C, packed)]
+pub struct PropRes {
+    pub frame_control: u16,
+    pub duration_id: u16,
+    pub addr1: [u8; 6],
+    pub addr2: [u8; 6],
+    pub addr3: [u8; 6],
+    pub sequence_ctrl: u16,
+
+    pub timestamp: u64,
+    pub beacon_interval: u16,
+    pub capabilities: u16,
+    // SSID
+    pub ssid_pad: u8,
+    pub ssid_len: u8,
+    pub ssid: [u8; 32],
+
+    // Supported Rates Element
+    pub supported_rates_id: u8,
+    pub supported_rates_len: u8,
+    pub supported_rates: [u8; 8],
+
+    // DS Parameter Set / Channel Element
+    pub ds_parameter_set_id: u8,
+    pub ds_parameter_set_len: u8,
+    pub channel: u8,
+
+    // RSN Element
+    pub rsn_id: u8,
+    pub rsn_len: u8,
+    pub rsn_version: u16,
+    pub group_cipher: [u8; 4],
+    pub pairwise_cipher_count: u16,
+    pub pairwise_cipher: [u8; 4],
+    pub akm_count: u16,
+    pub akm_suite: [u8; 4],
+    pub rsn_capabilities: u16,
+}
+
+impl PropRes {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(26);
+
+        bytes.extend_from_slice(&self.frame_control.to_le_bytes());
+        bytes.extend_from_slice(&self.duration_id.to_le_bytes());
+        bytes.extend_from_slice(&self.addr1);
+        bytes.extend_from_slice(&self.addr2);
+        bytes.extend_from_slice(&self.addr3);
+        bytes.extend_from_slice(&self.sequence_ctrl.to_le_bytes());
+
+        bytes.extend_from_slice(&self.timestamp.to_le_bytes());
+        bytes.extend_from_slice(&self.beacon_interval.to_le_bytes());
+        bytes.extend_from_slice(&self.capabilities.to_le_bytes());
+
+        bytes.push(self.ssid_pad);
+        bytes.push(self.ssid_len);
+        bytes.extend_from_slice(&self.ssid[..self.ssid_len as usize]);
+
+        bytes.push(self.supported_rates_id);
+        bytes.push(self.supported_rates_len);
+        bytes.extend_from_slice(&self.supported_rates);
+
+        bytes.push(self.ds_parameter_set_id);
+        bytes.push(self.ds_parameter_set_len);
+        bytes.push(self.channel);
+
+        // RSN Element
+        bytes.push(self.rsn_id);
+        bytes.push(self.rsn_len);
+        bytes.extend_from_slice(&self.rsn_version.to_le_bytes());
+        bytes.extend_from_slice(&self.group_cipher);
+        bytes.extend_from_slice(&self.pairwise_cipher_count.to_le_bytes());
+        bytes.extend_from_slice(&self.pairwise_cipher);
+        bytes.extend_from_slice(&self.akm_count.to_le_bytes());
+        bytes.extend_from_slice(&self.akm_suite);
+        bytes.extend_from_slice(&self.rsn_capabilities.to_le_bytes());
+
+        bytes
+    }
+}
+
+impl ControlFrame {
+    pub fn dauth() -> Dauth {
+        Dauth::default()
+    }
+
+    pub fn bcon() -> Bcon {
+        Bcon::default()
+    }
+
+    pub fn prop_res() -> PropRes {
+        PropRes::default()
     }
 }
