@@ -1,0 +1,9 @@
+[package]
+name = "common"
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+pcap-file = { workspace = true }

@@ -24,12 +24,12 @@ impl Ctrl {
     pub fn drain(&mut self) {
         self.service.drain();
     }
-    pub fn deauth(&self, target: [u8; 6], bssid: [u8; 6]) {
-        self.service.deauth(target, bssid);
+    pub fn disconnect(&self, target: [u8; 6], bssid: [u8; 6]) {
+        self.service.disconnect(target, bssid);
     }
 
-    pub fn beacons(&self, bssid: [u8; 6], ssid: &str, channel: u16, seq_counter: u16) {
-        self.service.beacons(bssid, ssid, channel, seq_counter);
+    pub fn gen_fap(&self, bssid: [u8; 6], ssid: &str, channel: u16, seq_counter: u16) {
+        self.service.gen_fap(bssid, ssid, channel, seq_counter);
     }
 
     pub fn prope_responce(

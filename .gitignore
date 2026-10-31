@@ -1,6 +1,8 @@
 /target
 capture.22000
-hello.cap
+*.cap
 test*
 wordlist*
 protocall.txt
+*.pcap
+*.txt

@@ -176,7 +176,6 @@ impl TerminalManager {
 
                     let ssid = ap.1.ssid.as_deref().unwrap_or("<hidden>");
 
-                    // Safe UTF-8 truncation.
                     let ssid: String = ssid.chars().take(32).collect();
 
                     queue!(
@@ -262,11 +261,6 @@ impl TerminalManager {
             //     }
             // }
 
-            // CALCULATE VISIBLE CLIENT ROWS
-
-            //
-            // Keep some space at the bottom for the status line.
-            //
             let status_space: u16 = 4;
 
             let available_rows = height.saturating_sub(y).saturating_sub(status_space) as usize;

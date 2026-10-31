@@ -201,37 +201,30 @@ impl RadioTab {
         bytes.push(self.pad);
         bytes.extend_from_slice(&self.len.to_le_bytes());
         bytes.extend_from_slice(&self.present.to_le_bytes());
-        if let Some(tsft) = self.tsft {
-            bytes.extend_from_slice(&tsft.to_le_bytes());
+        if self.present != 0 {
+            if let Some(tsft) = self.tsft {
+                bytes.extend_from_slice(&tsft.to_le_bytes());
+            }
+
+            if let Some(flags) = self.flags {
+                bytes.extend_from_slice(&flags.to_le_bytes());
+            }
+            bytes.push(self.rate);
+
+            while bytes.len() % 2 != 0 {
+                bytes.push(0);
+            }
+
+            bytes.extend_from_slice(&self.channel_freq.to_le_bytes());
+            bytes.extend_from_slice(&self.channel_flags.to_le_bytes());
         }
-
-        if let Some(flags) = self.flags {
-            bytes.extend_from_slice(&flags.to_le_bytes());
-        }
-        bytes.push(self.rate);
-
-        while bytes.len() % 2 != 0 {
-            bytes.push(0);
-        }
-
-        bytes.extend_from_slice(&self.channel_freq.to_le_bytes());
-        bytes.extend_from_slice(&self.channel_flags.to_le_bytes());
-
         bytes
     }
 }
 
 #[derive(Default)]
 #[repr(C, packed)]
-pub struct ControlFrame {
-    pub frame_control: u16,
-    pub duration_id: u16,
-    pub addr1: [u8; 6],
-    pub addr2: [u8; 6],
-    pub addr3: [u8; 6],
-    pub sequence_ctrl: u16,
-    pub reason_code: Option<u16>,
-}
+pub struct ControlFrame {}
 
 #[derive(Default)]
 #[repr(C, packed)]

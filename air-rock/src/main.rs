@@ -32,12 +32,12 @@ fn main() {
             let mut rout_ctrl = airctl::nl_route::Ctrl::new(interface.clone());
 
             println!("  [1/4] Preparing interface...");
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             rout_ctrl.set_interface_power(false);
 
             println!("  [2/4] Interface powered off");
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             gen_ctrl.bind();
 
@@ -52,7 +52,7 @@ fn main() {
                 println!();
 
                 println!("  [4/4] Interface powered on...");
-                std::thread::sleep(std::time::Duration::from_millis(500));
+                std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
                 rout_ctrl.set_interface_power(true);
 
@@ -63,12 +63,12 @@ fn main() {
                 return;
             }
 
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             rout_ctrl.set_interface_power(true);
 
             println!("  [4/4] Interface powered on");
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             println!();
             println!("✓ Monitor mode started on {}", interface);
@@ -84,21 +84,21 @@ fn main() {
 
             let mut gen_ctrl = airctl::nl_gen::Ctrl::new(interface.clone());
 
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             let mut rout_ctrl = airctl::nl_route::Ctrl::new(interface.clone());
 
             println!("  [1/4] Preparing interface...");
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             rout_ctrl.set_interface_power(false);
 
             println!("  [2/4] Interface powered off");
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
             gen_ctrl.bind();
 
             println!("  [3/4] Switching to managed mode...");
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
             if gen_ctrl.stop_monitor() {
                 println!("        ✓ Managed mode enabled");
             } else {
@@ -106,7 +106,7 @@ fn main() {
                 println!();
 
                 println!("  [4/4] Interface powered on...");
-                std::thread::sleep(std::time::Duration::from_millis(500));
+                std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
                 rout_ctrl.set_interface_power(true);
 
@@ -117,11 +117,11 @@ fn main() {
                 return;
             }
 
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
             rout_ctrl.set_interface_power(true);
             println!("  [4/4] Interface powered on");
 
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             println!();
             println!("  Scanning for interface...");
@@ -131,7 +131,7 @@ fn main() {
                     break;
                 }
                 println!("        Waiting... ({}/10)", attempt);
-                std::thread::sleep(std::time::Duration::from_millis(500));
+                std::thread::sleep(std::time::Duration::from_millis(0x1f4));
             }
         }
 
@@ -145,7 +145,7 @@ fn main() {
 
             let mut rout_ctrl = airctl::nl_route::Ctrl::new(interface.clone());
             println!("  [1/1] Powering off interface...");
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             rout_ctrl.set_interface_power(false);
 
@@ -165,21 +165,21 @@ fn main() {
             let mut gen_ctrl = airctl::nl_gen::Ctrl::new(interface.clone());
 
             println!("  [1/3] Preparing interface...");
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             let mut rout_ctrl = airctl::nl_route::Ctrl::new(interface.clone());
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
             gen_ctrl.bind();
 
             println!("  [2/3] Powering on interface...");
 
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             rout_ctrl.set_interface_power(true);
 
             println!("        ✓ Interface powered on");
 
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             for attempt in 0..10 {
                 if gen_ctrl.scan() {
@@ -187,7 +187,7 @@ fn main() {
                     break;
                 }
                 println!("        Waiting... ({}/10)", attempt);
-                std::thread::sleep(std::time::Duration::from_millis(500));
+                std::thread::sleep(std::time::Duration::from_millis(0x1f4));
             }
         }
         Commands::Info { interface } => {
@@ -201,12 +201,12 @@ fn main() {
             let mut ctrl = airctl::nl_gen::Ctrl::new(interface);
 
             println!("  [1/2] Connecting to interface...");
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             ctrl.bind();
             println!("        ✓ Connected");
             println!("  [2/2] Reading interface information...");
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(0x1f4));
 
             match ctrl.interface_info() {
                 Some(info) => {

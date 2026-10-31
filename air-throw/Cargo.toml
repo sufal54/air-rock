@@ -8,3 +8,4 @@ edition.workspace = true
 [dependencies]
 airctl = { path = "../airctl"}
 clap = { workspace = true }
+rand = { workspace = true }

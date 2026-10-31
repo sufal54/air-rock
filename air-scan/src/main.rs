@@ -1,5 +1,4 @@
 mod module;
-mod pcap;
 
 use std::{
     collections::HashMap,
@@ -8,7 +7,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use airctl::{
@@ -19,8 +18,9 @@ use airctl::{
 
 use ::terminal_manager::TerminalManager;
 use clap::Parser;
+use common::PcapManager;
 
-use crate::{module::Handshake, pcap::PcapWriter};
+use crate::module::Handshake;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -105,10 +105,10 @@ fn main() {
                 for &(_, freq) in supported {
                     // println!("Channel {channel}: {freq} MHz");
                     nl_ctrl.set_frequency(freq);
-                    thread::sleep(Duration::from_millis(10));
+                    thread::sleep(Duration::from_millis(0xA));
                     af_ctrl.drain();
 
-                    match af_ctrl.accept_timeout(200) {
+                    match af_ctrl.accept_timeout(0xC8) {
                         Some((radio_info, packet_info, _)) => {
                             match packet_info.frame_name {
                                 FrameName::Beacon => {
@@ -184,8 +184,7 @@ fn main() {
             af_ctrl.drain();
 
             while running.load(Ordering::Relaxed) {
-                // thread::sleep(Duration::from_millis(200));
-                match af_ctrl.accept_timeout(200) {
+                match af_ctrl.accept_timeout(0xC8) {
                     Some((radio_info, packet_info, _)) => {
                         if packet_info.transmitter == bssid {
                             match packet_info.frame_name {
@@ -235,7 +234,7 @@ fn main() {
                 None => panic!("Unsupported channel: {channel}"),
             };
 
-            let mut pcap_writer = match PcapWriter::new(&path) {
+            let mut pcap_writer = match PcapManager::new(&path) {
                 Ok(pw) => pw,
                 Err(_) => panic!("Unsupported path: {path}"),
             };
@@ -247,10 +246,28 @@ fn main() {
             let mut handshake = Handshake::default();
             let mut acceptd_beacon = false;
 
-            while running.load(Ordering::Relaxed) {
-                // thread::sleep(Duration::from_millis(100));
+            let timeout = Duration::from_secs(10);
+            let mut start = Instant::now();
+            let mut is_target_drop = true;
 
-                match af_ctrl.accept_timeout(200) {
+            while running.load(Ordering::Relaxed) {
+                if start.elapsed() > timeout && !is_target_drop {
+                    is_target_drop = true;
+
+                    handshake.message1.found = false;
+                    handshake.message1.packet = vec![];
+
+                    handshake.message2.found = false;
+                    handshake.message2.packet = vec![];
+
+                    handshake.message3.found = false;
+                    handshake.message3.packet = vec![];
+
+                    handshake.message4.found = false;
+                    handshake.message4.packet = vec![];
+                }
+
+                match af_ctrl.accept_timeout(0xC8) {
                     Some((radio_info, packet_info, raw_packet)) => {
                         if packet_info.transmitter != bssid && packet_info.receiver != bssid {
                             continue;
@@ -258,6 +275,16 @@ fn main() {
 
                         match packet_info.frame_name {
                             FrameName::Beacon => {
+                                let is_target_bssid = packet_info.bssid == bssid;
+                                let is_target_transmitter = packet_info.transmitter == bssid;
+                                let is_broadcast = packet_info.receiver == "FF:FF:FF:FF:FF:FF";
+
+                                if !is_target_bssid
+                                    && !is_target_transmitter
+                                    && !(is_broadcast && packet_info.bssid == bssid)
+                                {
+                                    continue;
+                                }
                                 let worker_aps = Arc::clone(&aps);
 
                                 let mut aps = worker_aps.write().unwrap();
@@ -266,7 +293,7 @@ fn main() {
 
                                 if !acceptd_beacon {
                                     acceptd_beacon = true;
-                                    let _ = pcap_writer.write_packet(&raw_packet);
+                                    let _ = pcap_writer.append_packet(&raw_packet);
                                 }
                                 continue;
                             }
@@ -296,13 +323,13 @@ fn main() {
 
                             FrameName::EapolKeyMessage1 => {
                                 // AP -> Client
+
+                                is_target_drop = false;
+                                start = Instant::now();
+
                                 targeted_client = packet_info.receiver.clone();
                                 handshake.message1.found = true;
                                 handshake.message1.packet = raw_packet;
-
-                                // pcap_writer.write_packet(&raw_packet).unwrap();
-
-                                // println!("M1: {}", targeted_client);
                             }
 
                             FrameName::EapolKeyMessage2 => {
@@ -310,10 +337,6 @@ fn main() {
                                 if packet_info.transmitter == targeted_client {
                                     handshake.message2.found = true;
                                     handshake.message2.packet = raw_packet;
-
-                                    // pcap_writer.write_packet(&raw_packet).unwrap();
-
-                                    // println!("M2: {}", targeted_client);
                                 }
                             }
 
@@ -322,9 +345,6 @@ fn main() {
                                 if packet_info.receiver == targeted_client {
                                     handshake.message3.found = true;
                                     handshake.message3.packet = raw_packet;
-                                    // pcap_writer.write_packet(&raw_packet).unwrap();
-
-                                    // println!("M3: {}", targeted_client);
                                 }
                             }
 
@@ -333,9 +353,6 @@ fn main() {
                                 if packet_info.transmitter == targeted_client {
                                     handshake.message4.found = true;
                                     handshake.message4.packet = raw_packet;
-                                    // pcap_writer.write_packet(&raw_packet).unwrap();
-
-                                    // println!("M4: {}", targeted_client);
                                 }
                             }
 
@@ -347,12 +364,12 @@ fn main() {
                             && handshake.message3.found
                             && handshake.message4.found
                         {
-                            let _ = pcap_writer.write_packet(&handshake.message1.packet);
-                            let _ = pcap_writer.write_packet(&handshake.message2.packet);
+                            let _ = pcap_writer.append_packet(&handshake.message1.packet);
+                            let _ = pcap_writer.append_packet(&handshake.message2.packet);
 
-                            let _ = pcap_writer.write_packet(&handshake.message3.packet);
+                            let _ = pcap_writer.append_packet(&handshake.message3.packet);
 
-                            let _ = pcap_writer.write_packet(&handshake.message4.packet);
+                            let _ = pcap_writer.append_packet(&handshake.message4.packet);
 
                             running.store(false, Ordering::Relaxed);
                             println!("\n[+] Handshake captured successfully!");
@@ -370,7 +387,7 @@ fn main() {
                 None => panic!("Unsupported channel: {channel}"),
             };
 
-            let mut pcap_writer = match PcapWriter::new(&path) {
+            let mut pcap_writer = match PcapManager::new(&path) {
                 Ok(pw) => pw,
                 Err(_) => panic!("Unsupported path: {path}"),
             };
@@ -383,7 +400,7 @@ fn main() {
             let mut acceptd_beacon = false;
 
             while running.load(Ordering::Relaxed) {
-                match af_ctrl.accept_timeout(200) {
+                match af_ctrl.accept_timeout(0xC8) {
                     Some((radio_info, packet_info, raw_packet)) => {
                         if !((packet_info.transmitter == bssid && packet_info.receiver == target)
                             || (packet_info.transmitter == target && packet_info.receiver == bssid))
@@ -393,6 +410,19 @@ fn main() {
 
                         match packet_info.frame_name {
                             FrameName::Beacon => {
+                                let is_broadcast_beacon = packet_info.frame_name
+                                    == FrameName::Beacon
+                                    && (packet_info.receiver == "FF:FF:FF:FF:FF:FF"
+                                        || packet_info.receiver.is_empty());
+
+                                if !is_broadcast_beacon
+                                    && packet_info.transmitter != bssid
+                                    && packet_info.receiver != bssid
+                                    && packet_info.bssid != bssid
+                                {
+                                    continue;
+                                }
+
                                 let worker_aps = Arc::clone(&aps);
 
                                 let mut aps = worker_aps.write().unwrap();
@@ -401,7 +431,7 @@ fn main() {
 
                                 if !acceptd_beacon {
                                     acceptd_beacon = true;
-                                    let _ = pcap_writer.write_packet(&raw_packet);
+                                    let _ = pcap_writer.append_packet(&raw_packet);
                                 }
                                 continue;
                             }
@@ -472,12 +502,12 @@ fn main() {
                             && handshake.message3.found
                             && handshake.message4.found
                         {
-                            let _ = pcap_writer.write_packet(&handshake.message1.packet);
-                            let _ = pcap_writer.write_packet(&handshake.message2.packet);
+                            let _ = pcap_writer.append_packet(&handshake.message1.packet);
+                            let _ = pcap_writer.append_packet(&handshake.message2.packet);
 
-                            let _ = pcap_writer.write_packet(&handshake.message3.packet);
+                            let _ = pcap_writer.append_packet(&handshake.message3.packet);
 
-                            let _ = pcap_writer.write_packet(&handshake.message4.packet);
+                            let _ = pcap_writer.append_packet(&handshake.message4.packet);
 
                             running.store(false, Ordering::Relaxed);
                             println!("\n[+] Handshake captured successfully!");

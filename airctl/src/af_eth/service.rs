@@ -247,14 +247,11 @@ impl Service {
 
         // Control frames
         //
-        // Control frames DO NOT necessarily have 24-byte headers.
 
         if frame_type == 1 {
             self.parse_control_frame(wifi, subtype);
             return None;
         }
-
-        // Management/Data frames need at least 24 bytes
 
         if wifi.len() < 24 {
             return None;
@@ -270,7 +267,17 @@ impl Service {
         addr2.copy_from_slice(&wifi[10..16]);
         addr3.copy_from_slice(&wifi[16..22]);
 
-        let seq_ctrl = u16::from_le_bytes([wifi[22], wifi[23]]);
+        // If 4-address frame, extract addr4 (bytes 22-28) and shift sequence control offset to 28
+        let seq_offset = if to_ds && from_ds {
+            let mut addr4 = [0u8; 6];
+            addr4.copy_from_slice(&wifi[22..28]);
+            // packet_info.addr4 = Some(self.mac(&addr4)); // Uncomment if PacketInfo tracks addr4
+            28
+        } else {
+            22
+        };
+
+        let seq_ctrl = u16::from_le_bytes([wifi[seq_offset], wifi[seq_offset + 1]]);
 
         let sequence = seq_ctrl >> 4;
         let fragment = seq_ctrl & 0xF;
@@ -308,8 +315,6 @@ impl Service {
         if packet.len() < 8 {
             return None;
         }
-
-        // Radiotap header
 
         let version = packet[0];
 
@@ -363,7 +368,6 @@ impl Service {
 
         for (word_index, word) in words.iter().enumerate() {
             for bit in 0..32 {
-                // Bit 31 is the EXT flag, not a field.
                 if bit == 31 {
                     continue;
                 }
@@ -437,8 +441,6 @@ impl Service {
 
                     // Unknown field
                     _ => {
-                        // We don't know its size, so we cannot
-                        // safely continue parsing.
                         return Some((radio, length_usize));
                     }
                 };
@@ -483,9 +485,7 @@ impl Service {
                     }
 
                     // FHSS
-                    4 => {
-                        // Currently not stored.
-                    }
+                    4 => {}
 
                     // dBm Antenna Signal
                     5 => {
@@ -588,8 +588,6 @@ impl Service {
                 if wifi.len() >= 16 {
                     let mut addr2 = [0u8; 6];
                     addr2.copy_from_slice(&wifi[10..16]);
-
-                    // println!("Address 2   : {}", self.mac(&addr2));
                 }
             }
 
@@ -600,8 +598,6 @@ impl Service {
     // Beacon parser
 
     fn parse_beacon(&self, wifi: &[u8], packet_info: &mut PacketInfo) {
-        // Management header = 24 bytes
-
         if wifi.len() < 36 {
             return;
         }
@@ -699,7 +695,6 @@ impl Service {
                 // RSN
                 48 => {
                     packet_info.rsn = Some(data.to_vec());
-                    // println!("Security         : RSN (WPA2/WPA3)");
                 }
 
                 // HT Capabilities
@@ -787,7 +782,7 @@ impl Service {
             return None;
         }
 
-        // LLC / SNAP Header Check: AA-AA-03-00-00-00-88-8E
+        // LLC / SNAP Header: AA-AA-03-00-00-00-88-8E
         if wifi[pos..pos + 6] != [0xAA, 0xAA, 0x03, 0x00, 0x00, 0x00] {
             return None;
         }
@@ -796,9 +791,9 @@ impl Service {
         if ether_type != 0x888E {
             return None;
         }
-        pos += 8; // Past LLC/SNAP
+        pos += 8;
 
-        // EAPOL Header: Version(1), Type(1), Length(2)
+        // EAPOL Header
         if wifi.len() < pos + 4 {
             return Some(FrameName::Eapol);
         }
@@ -807,7 +802,7 @@ impl Service {
         if eapol_type != 3 {
             return Some(FrameName::Eapol);
         }
-        pos += 4; // Past EAPOL Header
+        pos += 4;
 
         // EAPOL-Key Descriptor Type & Key Info
         if wifi.len() < pos + 3 {
@@ -829,12 +824,10 @@ impl Service {
         let secure = (key_info & (1 << 9)) != 0;
         let encrypted_data = (key_info & (1 << 12)) != 0;
 
-        // Ignore Group Key handshake frames (bit 3 == 0)
         if !key_type_pairwise {
             return Some(FrameName::Eapol);
         }
 
-        // Classification Logic for 4-Way Pairwise Handshake
         if key_ack && !key_mic {
             Some(FrameName::EapolKeyMessage1)
         } else if !key_ack && key_mic && !secure {
@@ -929,7 +922,7 @@ impl Service {
         }
     }
 
-    pub fn deauth(&self, target: [u8; 6], bssid: [u8; 6]) {
+    pub fn disconnect(&self, target: [u8; 6], bssid: [u8; 6]) {
         let mut radio_tab = RadioTab::default();
         radio_tab.len = 8;
 
@@ -972,7 +965,7 @@ impl Service {
         }
     }
 
-    pub fn beacons(&self, bssid: [u8; 6], ssid: &str, channel: u16, seq_counter: u16) {
+    pub fn gen_fap(&self, bssid: [u8; 6], ssid: &str, channel: u16, seq_counter: u16) {
         let freq = channel_to_freq(channel as u16).unwrap();
 
         let mut packet = Vec::with_capacity(256);
@@ -1007,7 +1000,7 @@ impl Service {
         control_frame.sequence_ctrl = seq;
 
         control_frame.timestamp = 0;
-        control_frame.beacon_interval = 100;
+        control_frame.beacon_interval = 0x64;
         control_frame.capabilities = 0x0411;
 
         // SSID Element (ID 0)
@@ -1034,7 +1027,7 @@ impl Service {
         control_frame.country_len = 6;
         control_frame.country_code = *b"US ";
         control_frame.first_channel = 1;
-        control_frame.channel_count = 11;
+        control_frame.channel_count = 0xB;
         control_frame.max_tx_power = 0;
 
         // TIM Element - Traffic Indication Map
@@ -1047,8 +1040,8 @@ impl Service {
 
         // RSN Element - WPA2 Security
 
-        control_frame.rsn_id = 48;
-        control_frame.rsn_len = 20;
+        control_frame.rsn_id = 0x30;
+        control_frame.rsn_len = 0x14;
         control_frame.rsn_version = 1;
         control_frame.group_cipher = [0x00, 0x0f, 0xac, 0x04];
         control_frame.pairwise_cipher_count = 1;
@@ -1058,7 +1051,7 @@ impl Service {
         control_frame.rsn_capabilities = 0;
 
         // Extended Supported Rates Element
-        control_frame.extended_supported_rates_id = 50;
+        control_frame.extended_supported_rates_id = 0x32;
         control_frame.extended_supported_rates_len = 4;
         control_frame.extended_supported_rates = [0x30, 0x48, 0x60, 0x6c];
 
@@ -1107,7 +1100,7 @@ impl Service {
 
         radio_tap.version = 0;
         radio_tap.pad = 0;
-        radio_tap.len = 18;
+        radio_tap.len = 0x12;
         radio_tap.present = 0x0000002E;
         radio_tap.tsft = Some(0);
         radio_tap.flags = Some(0x00);
@@ -1131,7 +1124,7 @@ impl Service {
         frame.sequence_ctrl = (seq_counter & 0x0FFF) << 4;
 
         frame.timestamp = 0;
-        frame.beacon_interval = 100;
+        frame.beacon_interval = 0x64;
         frame.capabilities = 0x0411;
 
         // SSID IE
@@ -1151,8 +1144,8 @@ impl Service {
         frame.channel = channel as u8;
 
         // RSN IE — WPA2-Personal / CCMP
-        frame.rsn_id = 48;
-        frame.rsn_len = 20;
+        frame.rsn_id = 0x30;
+        frame.rsn_len = 0x14;
         frame.rsn_version = 1;
         frame.group_cipher = [0x00, 0x0f, 0xac, 0x04];
         frame.pairwise_cipher_count = 1;

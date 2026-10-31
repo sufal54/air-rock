@@ -1,0 +1,14 @@
+[package]
+name = "air-crack"
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+pcap-file = { workspace = true }
+rayon = "1.10"
+pbkdf2 = "0.12"
+sha1 = "0.10"
+hmac = "0.12"
+hex = "0.4"
