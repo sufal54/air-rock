@@ -7,8 +7,9 @@ edition.workspace = true
 
 [dependencies]
 pcap-file = { workspace = true }
-rayon = "1.10"
+clap = { workspace = true }
 pbkdf2 = "0.12"
 sha1 = "0.10"
+sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
