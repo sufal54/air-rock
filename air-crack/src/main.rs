@@ -8,7 +8,13 @@ use std::{
     fs::File,
     io::{BufRead, BufReader},
     ops::ControlFlow,
+    sync::{
+        Arc, RwLock,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
 };
+use terminal_manager::TerminalManager;
 
 #[derive(Default)]
 enum Encryption {
@@ -44,11 +50,12 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Mode {
+    #[command(name = "W")]
     Wordlist {
         #[arg(short, long)]
         wordlist_path: String,
     },
-
+    #[command(name = "B")]
     Bruteforce {
         #[arg(short, long)]
         keys: String,
@@ -186,13 +193,45 @@ fn main() {
         }
     }
 
+    let running = Arc::new(AtomicBool::new(true));
+    let terminal_running = Arc::clone(&running);
+
+    let is_password_found = Arc::new(AtomicBool::new(false));
+    let password_status = Arc::clone(&is_password_found);
+
+    let founded_password = Arc::new(RwLock::new(None::<String>));
+    let password_clone = Arc::clone(&founded_password);
+
+    let terminal_key = Arc::new(RwLock::new(String::new()));
+    let terminal_kck = Arc::new(RwLock::new(String::new()));
+
+    let key_clone = Arc::clone(&terminal_key);
+    let kck_clone = Arc::clone(&terminal_kck);
+
+    let worker_thread = thread::spawn(move || -> std::io::Result<()> {
+        let mut terminal_mang = TerminalManager::new()?;
+
+        terminal_mang.cracking(
+            terminal_running,
+            password_status,
+            password_clone,
+            key_clone,
+            kck_clone,
+        )
+    });
     match cli.mode {
         Mode::Wordlist { wordlist_path } => {
             let wordlist_file = File::open(wordlist_path).expect("Wordlist path should be vaild!");
             let reader = BufReader::new(wordlist_file);
 
             for line in reader.lines() {
+                if !running.load(Ordering::Relaxed) {
+                    break;
+                }
+
                 if let Ok(word) = line {
+                    *terminal_key.write().unwrap() = word.clone();
+
                     let pmk = derive_pmk(word.as_bytes(), info.ap_ssid.as_bytes());
                     let ptk = derive_ptk(
                         &info.encryption,
@@ -205,19 +244,28 @@ fn main() {
                     let mut kck = [0u8; 16];
                     kck.copy_from_slice(&ptk[..16]);
 
+                    *terminal_kck.write().unwrap() =
+                        kck.iter().map(|b| format!("{:02X}", b)).collect::<String>();
+
                     if verify_eapol_mic(&info.encryption, &kck, &info.eapol_frame) {
-                        println!("Password Founded!\n{}", word);
+                        *founded_password.write().unwrap() = Some(word);
+                        is_password_found.store(true, Ordering::Relaxed);
                         break;
                     }
                 }
             }
+            running.store(false, Ordering::Relaxed);
         }
 
         Mode::Bruteforce { keys, low, max } => {
             generate_combinations(keys.as_bytes(), low, max, |combination| {
+                if !running.load(Ordering::Relaxed) {
+                    return ControlFlow::Break(());
+                }
                 let s: &str = std::str::from_utf8(combination).unwrap();
 
-                println!("{}", s);
+                *terminal_key.write().unwrap() = s.to_string();
+
                 let pmk = derive_pmk(combination, info.ap_ssid.as_bytes());
                 let ptk = derive_ptk(
                     &info.encryption,
@@ -230,13 +278,26 @@ fn main() {
                 let mut kck = [0u8; 16];
                 kck.copy_from_slice(&ptk[..16]);
 
+                *terminal_kck.write().unwrap() =
+                    kck.iter().map(|b| format!("{:02X}", b)).collect::<String>();
+
                 if verify_eapol_mic(&info.encryption, &kck, &info.eapol_frame) {
+                    *founded_password.write().unwrap() = Some(s.to_string());
+
+                    is_password_found.store(true, Ordering::Relaxed);
+
                     return ControlFlow::Break(());
                 }
                 ControlFlow::Continue(())
             });
+
+            if running.load(Ordering::Relaxed) {
+                running.store(false, Ordering::Relaxed);
+            }
         }
     }
+
+    let _ = worker_thread.join().unwrap();
 }
 
 fn generate_combinations<F>(letters: &[u8], min_len: usize, max_len: usize, mut callback: F)

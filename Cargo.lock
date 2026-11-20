@@ -17,6 +17,7 @@ dependencies = [
  "pcap-file",
  "sha1",
  "sha2",
+ "terminal_manager",
 ]
 
 [[package]]

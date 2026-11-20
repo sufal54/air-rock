@@ -369,6 +369,204 @@ impl TerminalManager {
 
         Ok(())
     }
+
+    pub fn cracking(
+        &mut self,
+        terminal_running: Arc<AtomicBool>,
+        password_status: Arc<AtomicBool>,
+        founded_password: Arc<RwLock<Option<String>>>,
+
+        key: Arc<RwLock<String>>,
+        mic: Arc<RwLock<String>>,
+    ) -> io::Result<()> {
+        let mut frame: usize = 0;
+
+        while terminal_running.load(Ordering::Relaxed) {
+            // INPUT
+            while event::poll(Duration::from_millis(0)).unwrap_or(false) {
+                if let Ok(Event::Key(event)) = event::read() {
+                    if event.code == KeyCode::Char('c')
+                        && event.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        terminal_running.store(false, Ordering::Relaxed);
+                        break;
+                    }
+                }
+            }
+
+            // READ SHARED STRINGS
+            let key_string = key
+                .read()
+                .map_err(|_| io::Error::other("Key lock poisoned"))?
+                .clone();
+
+            let mic_string = mic
+                .read()
+                .map_err(|_| io::Error::other("MIC lock poisoned"))?
+                .clone();
+
+            // HEX CONVERSION
+            let hex = key_string
+                .as_bytes()
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            // ANIMATION
+            let width: usize = 20;
+
+            let position = frame % (width * 2);
+
+            let position = if position >= width {
+                width * 2 - position
+            } else {
+                position
+            };
+
+            let bar = format!("{}>{}", "=".repeat(position), " ".repeat(width - position));
+
+            let spinner = ["|", "/", "-", "\\"][frame % 4];
+
+            // DISPLAY
+            execute!(
+                self.stdout,
+                cursor::MoveTo(0, 0),
+                terminal::Clear(ClearType::FromCursorDown),
+                terminal::Clear(ClearType::FromCursorUp)
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 0),
+                Print("╔══════════════════════════════════════════════╗")
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 1),
+                Print("║              🪨 AIR-ROCK                     ║")
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 2),
+                Print("║           WIRELESS SECURITY TOOLKIT           ║")
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 3),
+                Print("╚══════════════════════════════════════════════╝")
+            )?;
+
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 5),
+                Print(format!("[ SYSTEM ] {spinner} RUNNING"))
+            )?;
+
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 7),
+                Print("┌──────────────────────────────────────────────┐")
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 8),
+                Print("│ KEY STRING                                   │")
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 9),
+                Print("│                                              │")
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 10),
+                Print(format!("│ {:<44} │", key_string))
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 11),
+                Print("│                                              │")
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 12),
+                Print("│ HEX DATA                                     │")
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 13),
+                Print("│                                              │")
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 14),
+                Print(format!("│ {:<44} │", hex))
+            )?;
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 15),
+                Print("└──────────────────────────────────────────────┘")
+            )?;
+
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 17),
+                Print(format!("[ HASH ] {mic_string}"))
+            )?;
+
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 19),
+                Print(format!("[ PROCESS ] [{bar}]"))
+            )?;
+
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 21),
+                Print(format!("[ FRAME ] {frame}"))
+            )?;
+
+            queue!(self.stdout, cursor::MoveTo(0, 23), Print("[ CTRL+C ] EXIT"))?;
+
+            self.stdout.flush()?;
+
+            frame = frame.wrapping_add(1);
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        let key = founded_password.read().unwrap().clone();
+        let _ = self.is_password_found(password_status.load(Ordering::Relaxed), key);
+
+        Ok(())
+    }
+
+    pub fn is_password_found(&mut self, is_found: bool, key: Option<String>) -> io::Result<()> {
+        execute!(
+            self.stdout,
+            cursor::MoveTo(0, 25),
+            terminal::Clear(ClearType::CurrentLine)
+        )?;
+
+        if is_found {
+            if let Some(key) = key {
+                queue!(
+                    self.stdout,
+                    cursor::MoveTo(0, 29),
+                    Print(format!("PASSWORD: {}", key)),
+                )?;
+            }
+        } else {
+            queue!(
+                self.stdout,
+                cursor::MoveTo(0, 26),
+                Print("PASSWORD NOT FOUND!"),
+            )?;
+        }
+
+        self.stdout.flush()?;
+
+        Ok(())
+    }
 }
 
 impl Drop for TerminalManager {
