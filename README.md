@@ -105,29 +105,26 @@ A configurable wireless testing module with wireless discovery and access-point 
 | `-a, --ap` | Optional access point BSSID |
 | `-g, --gap` | Optional interval configuration in milliseconds |
 | `-r, --repeat` | Optional repetition count |
-| `--ssid` | SSID required for access-point mode |
+| `-s, --ssid` | SSID required for access-point mode |
 
 #### Subcommands
 
 | Command | Description |
 |---|---|
-| `disc` | Wireless discovery mode |
-| `ap` | Access-point testing mode |
+| `D` | Wireless disconnect mode |
+| `A` | Access-point testing mode |
 
 #### Usage
 
 ```bash
-# Start wireless discovery
-air-thorw disc -i wlan0 -f 1
+# Disconnect with a specific access point
+air-thorw D -i wlan0 -f 1 -a AA:BB:CC:DD:EE:FF
 
-# Discover with a specific access point
-air-thorw disc -i wlan0 -f 1 -a AA:BB:CC:DD:EE:FF
-
-# Discover with a specific client
-air-thorw disc -i wlan0 -f 1 -a AA:BB:CC:DD:EE:FF -c 11:22:33:44:55:66
+# Disconnect with a specific client
+air-thorw D -i wlan0 -f 1 -a AA:BB:CC:DD:EE:FF -c 11:22:33:44:55:66
 
 # Start access-point testing with a specified SSID
-air-thorw ap -i wlan0 -f 1 --ssid "TestNetwork"
+air-thorw A -i wlan0 -f 1 --ssid "TestNetwork"
 ```
 ---
 

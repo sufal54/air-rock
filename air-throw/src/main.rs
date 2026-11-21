@@ -40,10 +40,12 @@ pub struct WirelessArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    Disc {
+    #[command(name = "D")]
+    Disconnect {
         #[command(flatten)]
         args: WirelessArgs,
     },
+    #[command(name = "A")]
     Ap {
         #[command(flatten)]
         args: WirelessArgs,
@@ -59,7 +61,7 @@ fn main() {
     let command = cli.command;
 
     match command {
-        Commands::Disc {
+        Commands::Disconnect {
             args:
                 WirelessArgs {
                     interface,
